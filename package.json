@@ -112,6 +112,17 @@
                             "italic": false
                         }
                     ]
+                },
+                "better-comments.output.minLevel": {
+                    "type": "string",
+                    "enum": ["debug", "info", "warn", "error"],
+                    "default": "debug",
+                    "description": "输出面板最低日志级别，低于此级别的日志不显示"
+                },
+                "better-comments.output.filterKeyword": {
+                    "type": "string",
+                    "default": "",
+                    "description": "输出面板关键词筛选，仅显示包含该关键词的日志（留空则不过滤）"
                 }
             }
         }

@@ -20,16 +20,58 @@ const LEVEL_ORDER: Record<LogLevel, number> = {
 };
 
 let channel: vscode.OutputChannel | undefined;
-let minLevel: LogLevel = 'debug';
+let optionsMinLevel: LogLevel | undefined;
 
-function timestamp(): string {
-    return new Date().toLocaleTimeString('zh-CN', { hour12: false });
+function getOutputConfig(): { minLevel: LogLevel; filterKeyword: string } {
+    const cfg = vscode.workspace.getConfiguration('better-comments');
+    const level = cfg.get<string>('output.minLevel', 'debug');
+    const keyword = (cfg.get<string>('output.filterKeyword') ?? '').trim();
+    return {
+        minLevel: LEVEL_ORDER[level as LogLevel] !== undefined ? (level as LogLevel) : 'debug',
+        filterKeyword: keyword,
+    };
 }
 
+/** 格式: 2026-03-13 16:39:58.727 */
+function timestamp(): string {
+    const d = new Date();
+    const y = d.getFullYear();
+    const M = String(d.getMonth() + 1).padStart(2, '0');
+    const D = String(d.getDate()).padStart(2, '0');
+    const h = String(d.getHours()).padStart(2, '0');
+    const m = String(d.getMinutes()).padStart(2, '0');
+    const s = String(d.getSeconds()).padStart(2, '0');
+    const ms = String(d.getMilliseconds()).padStart(3, '0');
+    return `${y}-${M}-${D} ${h}:${m}:${s}.${ms}`;
+}
+
+/** ANSI 颜色（输出面板支持时生效） */
+const ANSI = {
+    reset: '\x1b[0m',
+    dim: '\x1b[2m',
+    gray: '\x1b[90m',
+    red: '\x1b[31m',
+    green: '\x1b[32m',
+    yellow: '\x1b[33m',
+    blue: '\x1b[34m',
+    cyan: '\x1b[36m',
+} as const;
+
+const LEVEL_COLORS: Record<LogLevel, string> = {
+    debug: ANSI.cyan,
+    info: ANSI.green,
+    warn: ANSI.yellow,
+    error: ANSI.red,
+};
+
 function write(level: LogLevel, message: string) {
-    if (LEVEL_ORDER[level] < LEVEL_ORDER[minLevel]) return;
-    const prefix = `[${timestamp()}] [${level.toUpperCase()}]`;
-    channel?.appendLine(`${prefix} ${message}`);
+    const { minLevel: cfgMin, filterKeyword: kw } = getOutputConfig();
+    const effectiveMin = optionsMinLevel ?? cfgMin;
+    if (LEVEL_ORDER[level] < LEVEL_ORDER[effectiveMin]) return;
+    if (kw && !message.toLowerCase().includes(kw.toLowerCase())) return;
+    const ts = `${ANSI.gray}${timestamp()}${ANSI.reset}`;
+    const levelTag = `${LEVEL_COLORS[level]}[${level}]${ANSI.reset}`;
+    channel?.appendLine(`${ts} ${levelTag} ${message}`);
 }
 
 /**
@@ -50,7 +92,7 @@ export function createOutputChannel(
 } {
     channel = vscode.window.createOutputChannel(CHANNEL_NAME);
     context.subscriptions.push(channel);
-    if (options?.minLevel) minLevel = options.minLevel;
+    optionsMinLevel = options?.minLevel;
     return {
         debug(msg) { write('debug', msg); },
         info(msg) { write('info', msg); },
@@ -60,7 +102,7 @@ export function createOutputChannel(
             channel?.appendLine(text);
         },
         setMinLevel(level: LogLevel) {
-            minLevel = level;
+            optionsMinLevel = level;
         },
     };
 }

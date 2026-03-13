@@ -94,14 +94,21 @@ interface Logger {
 // 标签与高亮
 // ---------------------------------------------------------------------------
 
-/** 配置项中单条标签的结构（与 package.json contributes 一致；tag 可为单个名称或名称数组，数组时共用同一样式） */
+/** 配置项中单条标签的结构（与 package.json contributes 一致；tag 可为单个名称或名称数组，数组时共用同一样式；匹配注释内标签时不区分大小写） */
 interface TagItem {
+    /** 标签名或标签名数组；与注释内文本匹配时不区分大小写（如 todo / TODO 均匹配） */
     tag: string | string[];
+    /** 注释文字颜色，支持 CSS 颜色值（如 #FF0000、rgb(255,0,0)） */
     color?: string;
+    /** 注释文字背景色，支持 CSS 颜色值；默认透明 */
     backgroundColor?: string;
+    /** 是否对匹配的注释文字加删除线 */
     strikethrough?: boolean;
+    /** 是否对匹配的注释文字加下划线 */
     underline?: boolean;
+    /** 是否对匹配的注释文字加粗 */
     bold?: boolean;
+    /** 是否对匹配的注释文字使用斜体 */
     italic?: boolean;
 }
 

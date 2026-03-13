@@ -15,30 +15,48 @@ const DEFAULT_TAG_ITEMS: TagItem[] = [
     { tag: '*', color: '#98C379', strikethrough: false, underline: false, bold: false, italic: false, backgroundColor: 'transparent' },
 ];
 
+/** 正则特殊字符，用于转义标签以安全嵌入正则 */
+const REGEX_SPECIAL = /([()[{*+.$^\\|?/])/g;
+
 /**
- * 将单个 TagItem 转为 TagDef（含 escapedTag 与 decoration）
- * @param item 配置项中的单条标签
- * @returns 用于高亮匹配与装饰的 TagDef
+ * 将 tag 规范为字符串数组（支持 string | string[]）
  */
-function itemToTagDef(item: TagItem): TagDef {
-    const tag = typeof item.tag === 'string' ? item.tag : String(item?.tag ?? '');
+function normalizeTagNames(tag: string | string[] | undefined): string[] {
+    if (typeof tag === 'string') return tag ? [tag] : [];
+    if (Array.isArray(tag)) return tag.filter((t): t is string => typeof t === 'string' && t.length > 0);
+    return [];
+}
+
+/**
+ * 将单个 TagItem 转为 TagDef 列表（含 escapedTag 与 decoration）
+ * tag 为数组时多个标签共用同一 decoration
+ * @param item 配置项中的单条标签
+ * @returns 用于高亮匹配与装饰的 TagDef 数组，无有效 tag 时返回空数组
+ */
+function itemToTagDefs(item: TagItem): TagDef[] {
+    const tagNames = normalizeTagNames(item.tag);
+    if (tagNames.length === 0) return [];
+
     const color = typeof item.color === 'string' ? item.color : 'transparent';
     const backgroundColor = typeof item.backgroundColor === 'string' ? item.backgroundColor : 'transparent';
-    const options: vscode.DecorationRenderOptions = { color, backgroundColor };
-    options.textDecoration = '';
-    if (item.strikethrough) options.textDecoration += 'line-through';
-    if (item.underline) options.textDecoration += ' underline';
-    if (item.bold) options.fontWeight = 'bold';
-    if (item.italic) options.fontStyle = 'italic';
+    const parts: string[] = [];
+    if (item.strikethrough) parts.push('line-through');
+    if (item.underline) parts.push('underline');
 
-    const escaped = tag.replace(/([()[{*+.$^\\|?])/g, '\\$1');
-    const escapedTag = escaped.replace(/\//gi, '\\/');
-
-    return {
-        tag,
-        escapedTag,
-        decoration: vscode.window.createTextEditorDecorationType(options),
+    const options: vscode.DecorationRenderOptions = {
+        color,
+        backgroundColor,
+        textDecoration: parts.length ? parts.join(' ') : undefined,
+        ...(item.bold && { fontWeight: 'bold' }),
+        ...(item.italic && { fontStyle: 'italic' }),
     };
+
+    const decoration = vscode.window.createTextEditorDecorationType(options);
+    return tagNames.map((tag) => ({
+        tag,
+        escapedTag: tag.replace(REGEX_SPECIAL, '\\$1'),
+        decoration,
+    }));
 }
 
 /**
@@ -62,23 +80,17 @@ export function getTagItems(): { items: TagItem[]; fromDefault: boolean } {
  */
 export function buildTagDefs(items: TagItem[], log?: Logger): TagDef[] {
     const result: TagDef[] = [];
-
     for (const item of items) {
-        const tag = typeof item.tag === 'string' ? item.tag : String(item?.tag ?? '');
-        if (!tag) {
-            log?.warn('跳过无效的标签项：tag 为空或非字符串');
-            continue;
-        }
-        result.push(itemToTagDef(item as TagItem));
+        const defs = itemToTagDefs(item);
+        if (defs.length === 0) log?.warn('跳过无效的标签项：tag 为空或非字符串');
+        else result.push(...defs);
     }
-
     if (result.length === 0) {
         log?.warn('未得到有效标签，已使用内置默认标签');
         for (const item of DEFAULT_TAG_ITEMS) {
-            result.push(itemToTagDef(item));
+            result.push(...itemToTagDefs(item));
         }
     }
-
     return result;
 }
 

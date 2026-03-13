@@ -94,9 +94,9 @@ interface Logger {
 // 标签与高亮
 // ---------------------------------------------------------------------------
 
-/** 配置项中单条 tag 的原始结构（与 package.json contributes 一致） */
+/** 配置项中单条标签的结构（与 package.json contributes 一致；tag 可为单个名称或名称数组，数组时共用同一样式） */
 interface TagItem {
-    tag: string;
+    tag: string | string[];
     color?: string;
     backgroundColor?: string;
     strikethrough?: boolean;

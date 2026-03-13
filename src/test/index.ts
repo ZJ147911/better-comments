@@ -1,22 +1,19 @@
 //
-// PLEASE DO NOT MODIFY / DELETE UNLESS YOU KNOW WHAT YOU ARE DOING
+// 除非确知其用途，请勿修改或删除本文件
 //
-// This file is providing the test runner to use when running extension tests.
-// By default the test runner in use is Mocha based.
+// 本文件提供运行扩展测试时使用的测试运行器，默认使用基于 Mocha 的测试运行器。
+// 若需自定义测试运行器，可导出一个函数 run(testRoot: string, clb: (error:Error) => void)，
+// 扩展宿主会调用该函数执行测试；测试运行器应使用 console.log 将结果回传给调用方，
+// 测试结束后通过回调返回错误对象或 null。
 //
-// You can provide your own test runner if you want to override it by exporting
-// a function run(testRoot: string, clb: (error:Error) => void) that the extension
-// host can call to run the tests. The test runner is expected to use console.log
-// to report the results back to the caller. When the tests are finished, return
-// a possible error to the callback or null if none.
 
 var testRunner = require('vscode/lib/testrunner');
 
-// You can directly control Mocha options by uncommenting the following lines
-// See https://github.com/mochajs/mocha/wiki/Using-mocha-programmatically#set-options for more info
+// 可通过取消下列行的注释来直接配置 Mocha 选项
+// 参见 https://github.com/mochajs/mocha/wiki/Using-mocha-programmatically#set-options
 testRunner.configure({
-    ui: 'tdd', 		// the TDD UI is being used in extension.test.ts (suite, test, etc.)
-    useColors: true // colored output from test results
+    ui: 'tdd', 		// extension.test.ts 中使用 TDD 风格（suite、test 等）
+    useColors: true  // 测试结果彩色输出
 });
 
 module.exports = testRunner;

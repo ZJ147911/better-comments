@@ -1,6 +1,6 @@
 {
 	"compilerOptions": {
-        "strict": true,   /* enable all strict type-checking options */
+        "strict": true,   /* 启用所有严格类型检查选项 */
 		"alwaysStrict": true,
 		"isolatedModules": true,
 		"module": "commonjs",
@@ -14,7 +14,7 @@
 		"sourceMap": true,
 		"strictNullChecks": true,
 		"rootDir": "src",
-        "noUnusedLocals": true /* Report errors on unused locals. */
+        "noUnusedLocals": true /* 对未使用的局部变量报错 */
 	},
 	"exclude": [
 		"src/test*",

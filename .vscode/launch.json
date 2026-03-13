@@ -1,4 +1,4 @@
-// A launch configuration that compiles the extension and then opens it inside a new window
+// 用于编译扩展并在新窗口中打开的启动配置
 {
     "version": "0.1.0",
     "configurations": [

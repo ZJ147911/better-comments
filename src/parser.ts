@@ -13,24 +13,24 @@ export class Parser {
     private highlightMultilineComments = false;
     private highlightJSDoc = false;
 
-    // * this will allow plaintext files to show comment highlighting if switched on
+    /** 开启后允许纯文本文件也显示注释高亮 */
     private isPlainText = false;
 
-    // * this is used to prevent the first line of the file (specifically python) from coloring like other comments
+    /** 用于避免文件首行（如 Python 的 shebang）被当作注释着色 */
     private ignoreFirstLine = false;
 
-    // * this is used to trigger the events when a supported language code is found
+    /** 当检测到支持的语言时用于触发高亮逻辑 */
     public supportedLanguage = true;
 
-    // Read from the package.json
+    /** 从 package.json 读取的配置 */
     private contributions: Contributions = vscode.workspace.getConfiguration('better-comments') as any;
 
-    // The configuration necessary to find supported languages on startup
+    /** 用于在启动时解析各语言注释配置 */
     private configuration: Configuration;
 
     /**
-     * Creates a new instance of the Parser class
-     * @param configuration 
+     * 创建 Parser 实例
+     * @param config 语言注释配置
      */
     public constructor(config: Configuration) {
 
@@ -40,14 +40,12 @@ export class Parser {
     }
 
     /**
-     * Sets the regex to be used by the matcher based on the config specified in the package.json
-     * @param languageCode The short code of the current language
-     * https://code.visualstudio.com/docs/languages/identifiers
+     * 根据 package.json 中的配置设置用于匹配注释的正则
+     * @param languageCode 当前语言的短标识，参见 https://code.visualstudio.com/docs/languages/identifiers
      */
     public async SetRegex(languageCode: string) {
         await this.setDelimiter(languageCode);
 
-        // if the language isn't supported, we don't need to go any further
         if (!this.supportedLanguage) {
             return;
         }
@@ -55,31 +53,26 @@ export class Parser {
         const characters = this.getTagEscapedPattern();
 
         if (this.isPlainText && this.contributions.highlightPlainText) {
-            // start by tying the regex to the first character in a line
             this.expression = "(^)+([ \\t]*[ \\t]*)";
         } else {
-            // start by finding the delimiter (//, --, #, ') with optional spaces or tabs
             this.expression = "(" + this.delimiter + ")+( |\t)*";
         }
 
-        // Apply all configurable comment start tags
         this.expression += "(";
         this.expression += characters.join("|");
         this.expression += ")+(.*)";
     }
 
     /**
-     * Finds all single line comments delimited by a given delimiter and matching tags specified in package.json
-     * @param activeEditor The active text editor containing the code document
+     * 查找所有按给定分隔符划分且匹配 package.json 中标签的单行注释
+     * @param activeEditor 当前代码文档所在的编辑器
      */
     public FindSingleLineComments(activeEditor: vscode.TextEditor): void {
 
-        // If highlight single line comments is off, single line comments are not supported for this language
         if (!this.highlightSingleLineComments) return;
 
         let text = activeEditor.document.getText();
 
-        // if it's plain text, we have to do multiline regex to catch the start of the line with ^
         let regexFlags = (this.isPlainText) ? "igm" : "ig";
         let regEx = new RegExp(this.expression, regexFlags);
 
@@ -98,12 +91,11 @@ export class Parser {
     }
 
     /**
-     * Finds block comments as indicated by start and end delimiter
-     * @param activeEditor The active text editor containing the code document
+     * 按起始与结束分隔符查找块注释
+     * @param activeEditor 当前代码文档所在的编辑器
      */
     public FindBlockComments(activeEditor: vscode.TextEditor): void {
 
-        // If highlight multiline is off in package.json or doesn't apply to his language, return
         if (!this.highlightMultilineComments) return;
         
         let text = activeEditor.document.getText();
@@ -111,7 +103,6 @@ export class Parser {
         const characters = this.getTagEscapedPattern();
         const commentMatchString = "(^)+([ \\t]*[ \\t]*)(" + characters.join("|") + ")([ ]*|[:])+([^*/][^\\r\\n]*)";
 
-        // Use start and end delimiters to find block comments
         let regexString = "(^|[ \\t])(";
         regexString += this.blockCommentStart;
         regexString += "[\\s])+([\\s\\S]*?)(";
@@ -138,12 +129,11 @@ export class Parser {
     }
 
     /**
-     * Finds all multiline comments starting with "*"
-     * @param activeEditor The active text editor containing the code document
+     * 查找所有以 "*" 开头的多行 JSDoc 注释
+     * @param activeEditor 当前代码文档所在的编辑器
      */
     public FindJSDocComments(activeEditor: vscode.TextEditor): void {
 
-        // If highlight multiline is off in package.json or doesn't apply to his language, return
         if (!this.highlightMultilineComments && !this.highlightJSDoc) return;
 
         const text = activeEditor.document.getText();
@@ -170,24 +160,21 @@ export class Parser {
     }
 
     /**
-     * Apply decorations after finding all relevant comments
-     * @param activeEditor The active text editor containing the code document
+     * 在找到所有相关注释后应用装饰
+     * @param activeEditor 当前代码文档所在的编辑器
      */
     public ApplyDecorations(activeEditor: vscode.TextEditor): void {
         for (let tag of this.tags) {
             activeEditor.setDecorations(tag.decoration, tag.ranges);
-
-            // clear the ranges for the next pass
             tag.ranges.length = 0;
         }
     }
 
-    //#region  Private Methods
+    //#region 私有方法
 
     /**
-     * Sets the comment delimiter [//, #, --, '] of a given language
-     * @param languageCode The short code of the current language
-     * https://code.visualstudio.com/docs/languages/identifiers
+     * 设置指定语言的注释分隔符 [//, #, --, ']
+     * @param languageCode 当前语言的短标识，参见 https://code.visualstudio.com/docs/languages/identifiers
      */
     private async setDelimiter(languageCode: string): Promise<void> {
         this.supportedLanguage = false;
@@ -223,22 +210,18 @@ export class Parser {
             
             case "plaintext":
                 this.isPlainText = true;
-
-                // If highlight plaintext is enabled, this is a supported language
                 this.supportedLanguage = this.contributions.highlightPlainText;
                 break;
         }
     }
 
     /**
-     * Sets the highlighting tags up for use by the parser
+     * 初始化高亮标签供解析器使用
      */
     private setTags(): void {
         let items = this.contributions.tags;
         for (let item of items) {
             let options: vscode.DecorationRenderOptions = { color: item.color, backgroundColor: item.backgroundColor };
-
-            // ? the textDecoration is initialised to empty so we can concat a preceeding space on it
             options.textDecoration = "";
 
             if (item.strikethrough) {
@@ -260,37 +243,37 @@ export class Parser {
             let escapedSequence = item.tag.replace(/([()[{*+.$^\\|?])/g, '\\$1');
             this.tags.push({
                 tag: item.tag,
-                escapedTag: escapedSequence.replace(/\//gi, "\\/"), // ! hardcoded to escape slashes
+                escapedTag: escapedSequence.replace(/\//gi, "\\/"),
                 ranges: [],
                 decoration: vscode.window.createTextEditorDecorationType(options)
             });
         }
     }
 
-    /** Returns escaped tag patterns for regex (e.g. for single/block/JSDoc comment matching). */
+    /** 返回用于正则的转义标签模式（单行/块注释/JSDoc 匹配） */
     private getTagEscapedPattern(): string[] {
         return this.tags.map(t => t.escapedTag);
     }
 
-    /** Finds a tag by case-insensitive tag key. */
+    /** 按不区分大小写的标签名查找标签 */
     private findTagByKey(tagKey: string): CommentTag | undefined {
         return this.tags.find(t => t.tag.toLowerCase() === tagKey);
     }
 
     /**
-     * Escapes a given string for use in a regular expression
-     * @param input The input string to be escaped
-     * @returns {string} The escaped string
+     * 对字符串进行转义以便在正则中使用
+     * @param input 待转义字符串
+     * @returns 转义后的字符串
      */
     private escapeRegExp(input: string): string {
-        return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
+        return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
     /**
-     * Set up the comment format for single and multiline highlighting
-     * @param singleLine The single line comment delimiter. If NULL, single line is not supported
-     * @param start The start delimiter for block comments
-     * @param end The end delimiter for block comments
+     * 设置单行与多行注释的高亮格式
+     * @param singleLine 单行注释分隔符，为 null 表示不支持单行注释
+     * @param start 块注释起始分隔符
+     * @param end 块注释结束分隔符
      */
     private setCommentFormat(
             singleLine: string | string[] | null,
@@ -301,13 +284,11 @@ export class Parser {
         this.blockCommentStart = "";
         this.blockCommentEnd = "";
 
-        // If no single line comment delimiter is passed, single line comments are not supported
         if (singleLine) {
             if (typeof singleLine === 'string') {
                 this.delimiter = this.escapeRegExp(singleLine).replace(/\//ig, "\\/");
             }
             else if (singleLine.length > 0) {
-                // * if multiple delimiters are passed, the language has more than one single line comment format
                 var delimiters = singleLine
                             .map(s => this.escapeRegExp(s))
                             .join("|");
@@ -326,5 +307,5 @@ export class Parser {
         }
     }
 
-    //#endregion
+    //#endregion 私有方法
 }

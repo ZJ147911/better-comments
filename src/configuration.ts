@@ -9,15 +9,15 @@ export class Configuration {
     private readonly languageConfigFiles = new Map<string, string>();
 
     /**
-     * Creates a new instance of the Parser class
+     * 创建配置实例并加载各语言定义
      */
     public constructor() {
         this.UpdateLanguagesDefinitions();
     }
 
     /**
-     * Generate a map of configuration files by language as defined by extensions
-     * External extensions can override default configurations os VSCode
+     * 根据已安装扩展生成各语言对应的配置文件路径映射
+     * 外部扩展可覆盖 VSCode 默认的语言配置
      */
     public UpdateLanguagesDefinitions() {
         this.commentConfig.clear();
@@ -36,15 +36,15 @@ export class Configuration {
         }
     }
 
-    /** Language IDs that fall back to JavaScript comment config (e.g. Vue SFC). */
+    /** 回退到 JavaScript 注释配置的语言 ID（如 Vue 单文件组件） */
     private static readonly COMMENT_CONFIG_FALLBACKS: Readonly<Record<string, string>> = {
         vue: 'javascript',
         'vue-html': 'javascript',
     };
 
     /**
-     * Gets the configuration information for the specified language.
-     * Vue / Vue-HTML fall back to JavaScript comment syntax for script blocks.
+     * 获取指定语言的注释配置
+     * Vue / Vue-HTML 会回退为 JavaScript 注释语法（用于 script 块）
      */
     public async GetCommentConfiguration(languageCode: string): Promise<CommentConfig | undefined> {
         if (this.commentConfig.has(languageCode)) {

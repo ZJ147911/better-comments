@@ -1,11 +1,11 @@
 // Place your settings in this file to overwrite default and user settings.
 {
     "files.exclude": {
-        "out": false, // set this to true to hide the "out" folder with the compiled JS files
+        "out": false, // 设为 true 可隐藏编译输出目录 "out"
 		"npm-debug.log": true
     },
     "search.exclude": {
-        "out": true // set this to false to include "out" folder in search results
+        "out": true // 设为 false 可在搜索结果中包含 "out" 目录
 	},
 	"vsicons.presets.angular": false
 }

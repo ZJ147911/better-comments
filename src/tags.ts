@@ -50,18 +50,6 @@ function expandToSingleTagItems(items: TagItem[]): TagItemSingle[] {
   return result;
 }
 
-/** 从样式字段生成唯一 key，用于同一样式复用同一 decoration */
-function styleKey(item: TagItemSingle): string {
-  return JSON.stringify({
-    color: item.color ?? "transparent",
-    backgroundColor: item.backgroundColor ?? "transparent",
-    strikethrough: !!item.strikethrough,
-    underline: !!item.underline,
-    bold: !!item.bold,
-    italic: !!item.italic,
-  });
-}
-
 /** 根据样式选项创建 DecorationRenderOptions */
 function decorationOptionsFromItem(item: TagItemSingle): vscode.DecorationRenderOptions {
   const color = typeof item.color === "string" ? item.color : "transparent";
@@ -92,19 +80,13 @@ export function getTagItems(): { items: TagItemSingle[]; fromDefault: boolean } 
   return { items: DEFAULT_TAG_ITEMS, fromDefault: true };
 }
 
-/** 将 TagItemSingle[] 填入 tagDefMap，同一样式复用同一 decoration */
+/** 将 TagItemSingle[] 填入 tagDefMap，每个 tag 独立使用一个 decoration（即使样式相同） */
 function fillTagDefMap(
   items: TagItemSingle[],
   tagDefMap: Map<string, TagDef>,
-  decorationByStyle: Map<string, vscode.TextEditorDecorationType>,
 ): void {
   for (const item of items) {
-    const key = styleKey(item);
-    let decoration = decorationByStyle.get(key);
-    if (!decoration) {
-      decoration = vscode.window.createTextEditorDecorationType(decorationOptionsFromItem(item));
-      decorationByStyle.set(key, decoration);
-    }
+    const decoration = vscode.window.createTextEditorDecorationType(decorationOptionsFromItem(item));
     tagDefMap.set(item.tag, {
       tag: item.tag,
       escapedTag: item.tag.replace(REGEX_SPECIAL, "\\$1"),
@@ -114,16 +96,15 @@ function fillTagDefMap(
 }
 
 /**
- * 根据 TagItemSingle[] 构建 TagDef 列表（同一样式复用同一 decoration）
+ * 根据 TagItemSingle[] 构建 TagDef 列表（每个 tag 独立 decoration）
  * 同一 tag 名在配置中出现多次时，后边的规则覆盖前边的规则
  */
 function buildTagDefs(items: TagItemSingle[], log?: Logger): TagDef[] {
   const tagDefMap = new Map<string, TagDef>();
-  const decorationByStyle = new Map<string, vscode.TextEditorDecorationType>();
-  fillTagDefMap(items, tagDefMap, decorationByStyle);
+  fillTagDefMap(items, tagDefMap);
   if (tagDefMap.size === 0) {
     log?.warn("未得到有效标签，已使用内置默认标签");
-    fillTagDefMap(DEFAULT_TAG_ITEMS, tagDefMap, decorationByStyle);
+    fillTagDefMap(DEFAULT_TAG_ITEMS, tagDefMap);
   }
   return Array.from(tagDefMap.values());
 }

@@ -21,7 +21,7 @@ function sortTagDefsByLengthDesc(tagDefs: TagDef[]): TagDef[] {
   return [...tagDefs].sort((a, b) => b.tag.length - a.tag.length);
 }
 
-/** 纯单词类标签在正则中加词界 \\b，避免短标签抢先匹配 */
+/** 标签在正则中的模式，按长度降序排序确保长标签优先匹配；纯单词标签加 \b 避免误匹配 */
 function tagPatternForLine(tag: string, escapedTag: string): string {
   return /^[\w]+$/.test(tag) ? "\\b" + escapedTag + "\\b" : escapedTag;
 }

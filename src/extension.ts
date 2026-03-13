@@ -1,10 +1,13 @@
 import * as vscode from 'vscode';
 import { Configuration } from './configuration';
 import { Parser } from './parser';
+import { createOutputChannel } from './outputChannel';
 
 const DEBOUNCE_MS = 100;
 
 export async function activate(context: vscode.ExtensionContext) {
+    const log = createOutputChannel(context);
+
     let activeEditor: vscode.TextEditor | undefined;
     const configuration = new Configuration();
     const parser = new Parser(configuration);
@@ -30,16 +33,23 @@ export async function activate(context: vscode.ExtensionContext) {
     async function updateForEditor(editor: vscode.TextEditor | undefined) {
         if (!editor) return;
         activeEditor = editor;
-        await parser.SetRegex(editor.document.languageId);
+        const languageId = editor.document.languageId;
+        await parser.SetRegex(languageId);
+        log.debug(`语言: ${languageId}，支持: ${parser.supportedLanguage ? '是' : '否'}`);
         triggerUpdateDecorations();
     }
+
+    log.info('Better Comments 已激活');
 
     if (vscode.window.activeTextEditor) {
         await updateForEditor(vscode.window.activeTextEditor);
     }
 
     context.subscriptions.push(
-        vscode.extensions.onDidChange(() => configuration.UpdateLanguagesDefinitions()),
+        vscode.extensions.onDidChange(() => {
+            configuration.UpdateLanguagesDefinitions();
+            if (activeEditor) updateForEditor(activeEditor);
+        }),
         vscode.window.onDidChangeActiveTextEditor(editor => updateForEditor(editor)),
         vscode.workspace.onDidOpenTextDocument(doc => {
             if (vscode.window.activeTextEditor?.document === doc) {

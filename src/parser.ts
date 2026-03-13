@@ -225,7 +225,8 @@ export class Parser {
      * 初始化高亮标签供解析器使用
      */
     private setTags(): void {
-        let items = this.contributions.tags;
+        const raw = this.contributions?.tags;
+        const items = Array.isArray(raw) && raw.length > 0 ? raw : this.getDefaultTags();
         for (let item of items) {
             let options: vscode.DecorationRenderOptions = { color: item.color, backgroundColor: item.backgroundColor };
             options.textDecoration = "";
@@ -254,6 +255,17 @@ export class Parser {
                 decoration: vscode.window.createTextEditorDecorationType(options)
             });
         }
+    }
+
+    /** 当配置未加载或为空时使用的默认标签（与 package.json 默认一致） */
+    private getDefaultTags(): Array<{ tag: string; color: string; strikethrough: boolean; underline: boolean; bold: boolean; italic: boolean; backgroundColor: string }> {
+        return [
+            { tag: '!', color: '#FF2D00', strikethrough: false, underline: false, bold: false, italic: false, backgroundColor: 'transparent' },
+            { tag: '?', color: '#3498DB', strikethrough: false, underline: false, bold: false, italic: false, backgroundColor: 'transparent' },
+            { tag: '//', color: '#474747', strikethrough: true, underline: false, bold: false, italic: false, backgroundColor: 'transparent' },
+            { tag: 'todo', color: '#FF8C00', strikethrough: false, underline: false, bold: false, italic: false, backgroundColor: 'transparent' },
+            { tag: '*', color: '#98C379', strikethrough: false, underline: false, bold: false, italic: false, backgroundColor: 'transparent' },
+        ];
     }
 
     /** 返回用于正则的转义标签模式（单行/块注释/JSDoc 匹配） */

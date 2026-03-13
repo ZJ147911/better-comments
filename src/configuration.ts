@@ -128,7 +128,10 @@ export class Configuration {
 
         const resolvedId = Configuration.COMMENT_CONFIG_FALLBACKS[languageCode] ?? languageCode;
         if (!this.languageConfigFiles.has(resolvedId)) {
-            return undefined;
+            this.UpdateLanguagesDefinitions();
+            if (!this.languageConfigFiles.has(resolvedId)) {
+                return undefined;
+            }
         }
 
         try {

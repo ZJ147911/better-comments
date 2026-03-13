@@ -52,10 +52,7 @@ export class Parser {
             return;
         }
 
-        let characters: Array<string> = [];
-        for (let commentTag of this.tags) {
-            characters.push(commentTag.escapedTag);
-        }
+        const characters = this.getTagEscapedPattern();
 
         if (this.isPlainText && this.contributions.highlightPlainText) {
             // start by tying the regex to the first character in a line
@@ -82,26 +79,20 @@ export class Parser {
 
         let text = activeEditor.document.getText();
 
-        // if it's plain text, we have to do mutliline regex to catch the start of the line with ^
+        // if it's plain text, we have to do multiline regex to catch the start of the line with ^
         let regexFlags = (this.isPlainText) ? "igm" : "ig";
         let regEx = new RegExp(this.expression, regexFlags);
 
-        let match: any;
-        while (match = regEx.exec(text)) {
-            let startPos = activeEditor.document.positionAt(match.index);
-            let endPos = activeEditor.document.positionAt(match.index + match[0].length);
-            let range = { range: new vscode.Range(startPos, endPos) };
+        let match: RegExpExecArray | null;
+        while ((match = regEx.exec(text)) !== null) {
+            const startPos = activeEditor.document.positionAt(match.index);
+            const endPos = activeEditor.document.positionAt(match.index + match[0].length);
+            if (this.ignoreFirstLine && startPos.line === 0 && startPos.character === 0) continue;
 
-            // Required to ignore the first line of .py files (#61)
-            if (this.ignoreFirstLine && startPos.line === 0 && startPos.character === 0) {
-                continue;
-            }
-
-            // Find which custom delimiter was used in order to add it to the collection
-            let matchTag = this.tags.find(item => item.tag.toLowerCase() === match[3].toLowerCase());
-
+            const tagKey = (match[3] as string).toLowerCase();
+            const matchTag = this.findTagByKey(tagKey);
             if (matchTag) {
-                matchTag.ranges.push(range);
+                matchTag.ranges.push({ range: new vscode.Range(startPos, endPos) });
             }
         }
     }
@@ -117,16 +108,8 @@ export class Parser {
         
         let text = activeEditor.document.getText();
 
-        // Build up regex matcher for custom delimiter tags
-        let characters: Array<string> = [];
-        for (let commentTag of this.tags) {
-            characters.push(commentTag.escapedTag);
-        }
-
-        // Combine custom delimiters and the rest of the comment block matcher
-        let commentMatchString = "(^)+([ \\t]*[ \\t]*)(";
-        commentMatchString += characters.join("|");
-        commentMatchString += ")([ ]*|[:])+([^*/][^\\r\\n]*)";
+        const characters = this.getTagEscapedPattern();
+        const commentMatchString = "(^)+([ \\t]*[ \\t]*)(" + characters.join("|") + ")([ ]*|[:])+([^*/][^\\r\\n]*)";
 
         // Use start and end delimiters to find block comments
         let regexString = "(^|[ \\t])(";
@@ -138,24 +121,17 @@ export class Parser {
         let regEx = new RegExp(regexString, "gm");
         let commentRegEx = new RegExp(commentMatchString, "igm");
 
-        // Find the multiline comment block
-        let match: any;
-        while (match = regEx.exec(text)) {
-            let commentBlock = match[0];
-
-            // Find the line
-            let line;
-            while (line = commentRegEx.exec(commentBlock)) {
-                let startPos = activeEditor.document.positionAt(match.index + line.index + line[2].length);
-                let endPos = activeEditor.document.positionAt(match.index + line.index + line[0].length);
-                let range: vscode.DecorationOptions = { range: new vscode.Range(startPos, endPos) };
-
-                // Find which custom delimiter was used in order to add it to the collection
-                let matchString = line[3] as string;
-                let matchTag = this.tags.find(item => item.tag.toLowerCase() === matchString.toLowerCase());
-
+        let match: RegExpExecArray | null;
+        while ((match = regEx.exec(text)) !== null) {
+            const commentBlock = match[0];
+            let line: RegExpExecArray | null;
+            while ((line = commentRegEx.exec(commentBlock)) !== null) {
+                const startPos = activeEditor.document.positionAt(match.index + line.index + line[2].length);
+                const endPos = activeEditor.document.positionAt(match.index + line.index + line[0].length);
+                const tagKey = (line[3] as string).toLowerCase();
+                const matchTag = this.findTagByKey(tagKey);
                 if (matchTag) {
-                    matchTag.ranges.push(range);
+                    matchTag.ranges.push({ range: new vscode.Range(startPos, endPos) });
                 }
             }
         }
@@ -170,41 +146,24 @@ export class Parser {
         // If highlight multiline is off in package.json or doesn't apply to his language, return
         if (!this.highlightMultilineComments && !this.highlightJSDoc) return;
 
-        let text = activeEditor.document.getText();
+        const text = activeEditor.document.getText();
+        const characters = this.getTagEscapedPattern();
+        const commentMatchString = "(^)+([ \\t]*\\*[ \\t]*)(" + characters.join("|") + ")([ ]*|[:])+([^*/][^\\r\\n]*)";
+        const regEx = /(^|[ \t])(\/\*\*)+([\s\S]*?)(\*\/)/gm;
 
-        // Build up regex matcher for custom delimiter tags
-        let characters: Array<string> = [];
-        for (let commentTag of this.tags) {
-            characters.push(commentTag.escapedTag);
-        }
+        const commentRegEx = new RegExp(commentMatchString, "igm");
 
-        // Combine custom delimiters and the rest of the comment block matcher
-        let commentMatchString = "(^)+([ \\t]*\\*[ \\t]*)("; // Highlight after leading *
-        let regEx = /(^|[ \t])(\/\*\*)+([\s\S]*?)(\*\/)/gm; // Find rows of comments matching pattern /** */
-
-        commentMatchString += characters.join("|");
-        commentMatchString += ")([ ]*|[:])+([^*/][^\\r\\n]*)";
-
-        let commentRegEx = new RegExp(commentMatchString, "igm");
-
-        // Find the multiline comment block
-        let match: any;
-        while (match = regEx.exec(text)) {
-            let commentBlock = match[0];
-
-            // Find the line
-            let line;
-            while (line = commentRegEx.exec(commentBlock)) {
-                let startPos = activeEditor.document.positionAt(match.index + line.index + line[2].length);
-                let endPos = activeEditor.document.positionAt(match.index + line.index + line[0].length);
-                let range: vscode.DecorationOptions = { range: new vscode.Range(startPos, endPos) };
-
-                // Find which custom delimiter was used in order to add it to the collection
-                let matchString = line[3] as string;
-                let matchTag = this.tags.find(item => item.tag.toLowerCase() === matchString.toLowerCase());
-
+        let match: RegExpExecArray | null;
+        while ((match = regEx.exec(text)) !== null) {
+            const commentBlock = match[0];
+            let line: RegExpExecArray | null;
+            while ((line = commentRegEx.exec(commentBlock)) !== null) {
+                const startPos = activeEditor.document.positionAt(match.index + line.index + line[2].length);
+                const endPos = activeEditor.document.positionAt(match.index + line.index + line[0].length);
+                const tagKey = (line[3] as string).toLowerCase();
+                const matchTag = this.findTagByKey(tagKey);
                 if (matchTag) {
-                    matchTag.ranges.push(range);
+                    matchTag.ranges.push({ range: new vscode.Range(startPos, endPos) });
                 }
             }
         }
@@ -251,6 +210,8 @@ export class Parser {
             case "javascriptreact":
             case "typescript":
             case "typescriptreact":
+            case "vue":
+            case "vue-html":
                 this.highlightJSDoc = true;
                 break;
 
@@ -304,6 +265,16 @@ export class Parser {
                 decoration: vscode.window.createTextEditorDecorationType(options)
             });
         }
+    }
+
+    /** Returns escaped tag patterns for regex (e.g. for single/block/JSDoc comment matching). */
+    private getTagEscapedPattern(): string[] {
+        return this.tags.map(t => t.escapedTag);
+    }
+
+    /** Finds a tag by case-insensitive tag key. */
+    private findTagByKey(tagKey: string): CommentTag | undefined {
+        return this.tags.find(t => t.tag.toLowerCase() === tagKey);
     }
 
     /**

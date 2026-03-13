@@ -22,50 +22,50 @@ export class Configuration {
     public UpdateLanguagesDefinitions() {
         this.commentConfig.clear();
 
-        for (let extension of vscode.extensions.all) {
-            let packageJSON = extension.packageJSON;
-
-            if (packageJSON.contributes && packageJSON.contributes.languages) {
-                for (let language of packageJSON.contributes.languages) {
-                    if (language.configuration) {
-                        let configPath = path.join(extension.extensionPath, language.configuration);
-                        this.languageConfigFiles.set(language.id, configPath);
-                    }
+        for (const extension of vscode.extensions.all) {
+            const { contributes } = extension.packageJSON as { contributes?: { languages?: Array<{ id: string; configuration?: string }> } };
+            if (!contributes?.languages) continue;
+            for (const language of contributes.languages) {
+                if (language.configuration) {
+                    this.languageConfigFiles.set(
+                        language.id,
+                        path.join(extension.extensionPath, language.configuration)
+                    );
                 }
             }
         }
     }
 
+    /** Language IDs that fall back to JavaScript comment config (e.g. Vue SFC). */
+    private static readonly COMMENT_CONFIG_FALLBACKS: Readonly<Record<string, string>> = {
+        vue: 'javascript',
+        'vue-html': 'javascript',
+    };
+
     /**
-     * Gets the configuration information for the specified language
-     * @param languageCode 
-     * @returns 
+     * Gets the configuration information for the specified language.
+     * Vue / Vue-HTML fall back to JavaScript comment syntax for script blocks.
      */
     public async GetCommentConfiguration(languageCode: string): Promise<CommentConfig | undefined> {
-
-        // * check if the language config has already been loaded
         if (this.commentConfig.has(languageCode)) {
             return this.commentConfig.get(languageCode);
         }
 
-        // * if no config exists for this language, back out and leave the language unsupported
-        if (!this.languageConfigFiles.has(languageCode)) {
+        const resolvedId = Configuration.COMMENT_CONFIG_FALLBACKS[languageCode] ?? languageCode;
+        if (!this.languageConfigFiles.has(resolvedId)) {
             return undefined;
         }
 
         try {
-            // Get the filepath from the map
-            const filePath = this.languageConfigFiles.get(languageCode) as string;
+            const filePath = this.languageConfigFiles.get(resolvedId)!;
             const rawContent = await vscode.workspace.fs.readFile(vscode.Uri.file(filePath));
             const content = new TextDecoder().decode(rawContent);
+            const config = json5.parse(content) as { comments?: CommentConfig };
 
-            // use json5, because the config can contains comments
-            const config = json5.parse(content);
-
-            this.commentConfig.set(languageCode, config.comments);
-
-            return config.comments;
-        } catch (error) {
+            const comments = config.comments;
+            this.commentConfig.set(languageCode, comments);
+            return comments;
+        } catch {
             this.commentConfig.set(languageCode, undefined);
             return undefined;
         }

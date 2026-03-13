@@ -4,6 +4,14 @@ const CHANNEL_NAME = 'Better Comments';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
+/** 可选日志接口，供 Configuration / Parser 等注入，未注入时无输出 */
+export interface Logger {
+    debug(message: string): void;
+    info(message: string): void;
+    warn(message: string): void;
+    error(message: string): void;
+}
+
 const LEVEL_ORDER: Record<LogLevel, number> = {
     debug: 0,
     info: 1,
@@ -56,3 +64,11 @@ export function createOutputChannel(
         },
     };
 }
+
+/** 空实现，不输出任何内容 */
+export const noopLogger: Logger = {
+    debug() {},
+    info() {},
+    warn() {},
+    error() {},
+};

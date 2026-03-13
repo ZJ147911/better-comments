@@ -1,5 +1,6 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
+import type { Logger } from './outputChannel';
 
 /** 将 Uint8Array 解码为 UTF-8 字符串，不依赖 util 包（Node 用 Buffer，Web 用全局 TextDecoder） */
 function decodeUtf8(bytes: Uint8Array): string {
@@ -74,11 +75,14 @@ function parseJsonc(text: string): unknown {
 export class Configuration {
     private readonly commentConfig = new Map<string, CommentConfig | undefined>();
     private readonly languageConfigFiles = new Map<string, string>();
+    private readonly log: Logger;
 
     /**
      * 创建配置实例并加载各语言定义
+     * @param logger 可选，用于输出面板日志
      */
-    public constructor() {
+    public constructor(logger?: Logger) {
+        this.log = logger ?? { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} };
         this.UpdateLanguagesDefinitions();
     }
 
@@ -108,6 +112,7 @@ export class Configuration {
                 }
             }
         }
+        this.log.info(`已加载 ${this.languageConfigFiles.size} 个语言的注释配置`);
     }
 
     /** 无独立 language 配置时回退的注释配置（按注释风格对齐到已知语言） */
@@ -123,13 +128,19 @@ export class Configuration {
      */
     public async GetCommentConfiguration(languageCode: string): Promise<CommentConfig | undefined> {
         if (this.commentConfig.has(languageCode)) {
+            this.log.debug(`语言 "${languageCode}" 使用缓存配置`);
             return this.commentConfig.get(languageCode);
         }
 
         const resolvedId = Configuration.COMMENT_CONFIG_FALLBACKS[languageCode] ?? languageCode;
+        if (resolvedId !== languageCode) {
+            this.log.debug(`语言 "${languageCode}" 回退到 "${resolvedId}" 的注释配置`);
+        }
         if (!this.languageConfigFiles.has(resolvedId)) {
+            this.log.debug(`未找到 "${resolvedId}" 的配置，重新扫描扩展`);
             this.UpdateLanguagesDefinitions();
             if (!this.languageConfigFiles.has(resolvedId)) {
+                this.log.warn(`未找到语言 "${languageCode}" 的注释配置，已跳过`);
                 return undefined;
             }
         }
@@ -142,9 +153,11 @@ export class Configuration {
 
             const comments = config.comments;
             this.commentConfig.set(languageCode, comments);
+            this.log.debug(`已从文件加载语言 "${languageCode}" 的注释配置`);
             return comments;
-        } catch {
+        } catch (e) {
             this.commentConfig.set(languageCode, undefined);
+            this.log.error(`解析语言 "${languageCode}" 的配置文件失败: ${e instanceof Error ? e.message : String(e)}`);
             return undefined;
         }
     }

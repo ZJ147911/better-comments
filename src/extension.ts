@@ -9,8 +9,8 @@ export async function activate(context: vscode.ExtensionContext) {
     const log = createOutputChannel(context);
 
     let activeEditor: vscode.TextEditor | undefined;
-    const configuration = new Configuration();
-    const parser = new Parser(configuration);
+    const configuration = new Configuration(log);
+    const parser = new Parser(configuration, log);
     let decorationTimeout: ReturnType<typeof setTimeout> | undefined;
 
     function updateDecorations() {
@@ -47,6 +47,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(
         vscode.extensions.onDidChange(() => {
+            log.debug('扩展列表变化，重新加载语言配置');
             configuration.UpdateLanguagesDefinitions();
             if (activeEditor) updateForEditor(activeEditor);
         }),

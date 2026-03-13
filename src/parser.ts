@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { Configuration } from './configuration';
+import type { Logger } from './outputChannel';
 
 export class Parser {
     private tags: CommentTag[] = [];
@@ -27,15 +28,16 @@ export class Parser {
 
     /** 用于在启动时解析各语言注释配置 */
     private configuration: Configuration;
+    private readonly log: Logger;
 
     /**
      * 创建 Parser 实例
      * @param config 语言注释配置
+     * @param logger 可选，用于输出面板日志
      */
-    public constructor(config: Configuration) {
-
+    public constructor(config: Configuration, logger?: Logger) {
         this.configuration = config;
-
+        this.log = logger ?? { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} };
         this.setTags();
     }
 
@@ -61,6 +63,7 @@ export class Parser {
         this.expression += "(";
         this.expression += characters.join("|");
         this.expression += ")+(.*)";
+        this.log.debug(`已为语言 "${languageCode}" 构建匹配规则（单行: ${this.highlightSingleLineComments}, 块: ${this.highlightMultilineComments}, JSDoc: ${this.highlightJSDoc}）`);
     }
 
     /**
@@ -227,6 +230,9 @@ export class Parser {
     private setTags(): void {
         const raw = this.contributions?.tags;
         const items = Array.isArray(raw) && raw.length > 0 ? raw : this.getDefaultTags();
+        if (!raw || !Array.isArray(raw) || (raw as unknown[]).length === 0) {
+            this.log.warn('未读取到 better-comments.tags 配置，已使用内置默认标签');
+        }
         for (let item of items) {
             let options: vscode.DecorationRenderOptions = { color: item.color, backgroundColor: item.backgroundColor };
             options.textDecoration = "";

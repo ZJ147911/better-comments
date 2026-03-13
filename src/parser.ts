@@ -108,7 +108,7 @@ export class Parser {
 
         let regexString = "(^|[ \\t])(";
         regexString += this.blockCommentStart;
-        regexString += "[\\s])+([\\s\\S]*?)(";
+        regexString += "[\\s]*)([\\s\\S]*?)(";
         regexString += this.blockCommentEnd;
         regexString += ")";
 
@@ -188,8 +188,11 @@ export class Parser {
         if (config) {
             let blockCommentStart = config.blockComment ? config.blockComment[0] : null;
             let blockCommentEnd = config.blockComment ? config.blockComment[1] : null;
-
-            this.setCommentFormat(config.lineComment || blockCommentStart, blockCommentStart, blockCommentEnd);
+            // 仅有块注释的语言（如 HTML）不把 blockCommentStart 当行注释用，否则会从 <!-- 匹配到行尾导致错误高亮
+            const lineComment = config.lineComment !== undefined && config.lineComment !== null
+                ? config.lineComment
+                : null;
+            this.setCommentFormat(lineComment, blockCommentStart, blockCommentEnd);
 
             this.supportedLanguage = true;
         }

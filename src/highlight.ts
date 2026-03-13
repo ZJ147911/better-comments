@@ -15,12 +15,19 @@ function escapeRegExp(input: string): string {
   return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/**
- * 将标签转为「字母不区分大小写」的正则片段（如 todo -> [tT][oO][dD][oO]），用于多行注释按行匹配
- */
-function tagToCaseInsensitivePattern(tag: string): string {
-  const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return escaped.replace(/[a-zA-Z]/g, (c) => "[" + c.toLowerCase() + c.toUpperCase() + "]");
+/** 标签按长度降序排序，保证长标签优先匹配（如 todo 先于 to） */
+function sortTagDefsByLengthDesc(tagDefs: TagDef[]): TagDef[] {
+  return [...tagDefs].sort((a, b) => b.tag.length - a.tag.length);
+}
+
+/** 纯单词类标签在正则中加词界 \\b，避免短标签抢先匹配 */
+function tagPatternForLine(tag: string, escapedTag: string): string {
+  return /^[\w]+$/.test(tag) ? "\\b" + escapedTag + "\\b" : escapedTag;
+}
+
+/** 多行注释行内用：按长度降序 + 单词标签加 \\b，得到标签 alternation 的片段数组 */
+function getLineTagPatternParts(tagDefs: TagDef[]): string[] {
+  return sortTagDefsByLengthDesc(tagDefs).map((t) => tagPatternForLine(t.tag, t.escapedTag));
 }
 
 /** 使用 JSDoc 高亮的语言 ID */
@@ -91,7 +98,7 @@ export function resolveCommentFormat(commentConfig: CommentConfig | undefined, l
  */
 function buildSingleLineRegex(format: CommentFormat, tagDefs: TagDef[], isPlainText: boolean): RegExp | null {
   if (!format.highlightSingleLine && !isPlainText) return null;
-  const characters = tagDefs.map((t) => t.escapedTag);
+  const characters = sortTagDefsByLengthDesc(tagDefs).map((t) => t.escapedTag);
   if (characters.length === 0) return null;
 
   let prefix: string;
@@ -145,36 +152,7 @@ function findTagByKey(tagDefs: TagDef[], tagKey: string): TagDef | undefined {
   return tagDefs.find((t) => t.tag.toLowerCase() === tagKey);
 }
 
-/**
- * 在文档中查找单行注释匹配并按标签聚合区间
- * @param editor 当前编辑器
- * @param state 高亮状态
- * @param rangesByTag 可变 Map，将把新区间按标签合并进去
- * @remarks 若 format.highlightSingleLine 为 false 或 singleLineRegex 为 null 则不执行
- */
-export function findSingleLineRanges(editor: vscode.TextEditor, state: HighlightState, rangesByTag: RangesByTag): void {
-  if (!state.supported || !state.format.highlightSingleLine || !state.singleLineRegex) return;
-
-  const text = editor.document.getText();
-  const re = state.singleLineRegex;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(text)) !== null) {
-    const contentStart = match.index + (match[1]?.length ?? 0) + (match[2]?.length ?? 0);
-    const startPos = editor.document.positionAt(contentStart);
-    if (state.format.ignoreFirstLine && startPos.line === 0 && startPos.character === 0) continue;
-    const contentEnd = match.index + match[0].length;
-    const endPos = editor.document.positionAt(contentEnd);
-    const tagKey = (match[3] as string).toLowerCase();
-    const tagDef = findTagByKey(state.tagDefs, tagKey);
-    if (tagDef) {
-      const list = rangesByTag.get(tagDef.tag) ?? [];
-      list.push(new vscode.Range(startPos, endPos));
-      rangesByTag.set(tagDef.tag, list);
-    }
-  }
-}
-
-/** 按行拆分文本，保留每行在原文中的起始偏移（按 \n 拆分，\r 视为行内） */
+/** 按行拆分文本，保留每行在原文中的起始偏移（按 \n 拆分）；行尾 \r 保留在 line 中供偏移计算，匹配时用 trimRightCr 去除 */
 function splitLinesWithOffsets(text: string): { line: string; startOffset: number }[] {
   const result: { line: string; startOffset: number }[] = [];
   let start = 0;
@@ -187,90 +165,113 @@ function splitLinesWithOffsets(text: string): { line: string; startOffset: numbe
   return result;
 }
 
-/** 块注释内单行匹配：行首空白 + 标签 + 可选空格/冒号 + 剩余内容；标签字母显式不区分大小写；g 便于每行前重置 lastIndex */
+/** 去掉行尾 \\r，避免 (.*)$ 因 . 不匹配 \\r 导致整行不匹配（Windows \\r\\n） */
+function trimRightCr(line: string): string {
+  return line.endsWith("\r") ? line.slice(0, -1) : line;
+}
+
+/** 块注释内单行匹配：行首空白 + 标签 + 可选空格/冒号 + 剩余内容；i、g */
 function getBlockLineTagRegex(tagDefs: TagDef[]): RegExp {
-  const patterns = tagDefs.map((t) => tagToCaseInsensitivePattern(t.tag));
-  return new RegExp("^([\\s]*)(" + patterns.join("|") + ")([ ]*|[:])*(.*)$", "g");
+  const parts = getLineTagPatternParts(tagDefs);
+  if (parts.length === 0) return /(?!)/g;
+  return new RegExp("^([\\s]*)(" + parts.join("|") + ")([ ]*|[:])*(.*)$", "gi");
 }
 
 /**
- * 在文档中查找块注释内匹配标签的区间（多行注释按行重新匹配）
+ * 对块注释内容按行匹配标签并写入 rangesByTag（供块注释与 JSDoc 共用）
  * @param editor 当前编辑器
- * @param state 高亮状态
+ * @param content 块内文本（不含起止分隔符）
+ * @param contentStartInDoc 内容在文档中的起始偏移
+ * @param lineTagRegex 行内标签正则（含 g），每行匹配前需 lastIndex=0
+ * @param tagDefs 标签定义，用于按匹配到的 tagKey 查 TagDef
  * @param rangesByTag 可变 Map，将把新区间按标签合并进去
  */
-export function findBlockRanges(editor: vscode.TextEditor, state: HighlightState, rangesByTag: RangesByTag): void {
-  if (!state.supported || !state.format.highlightBlock) return;
-
-  const text = editor.document.getText();
-  const { blockCommentStart, blockCommentEnd } = state.format;
-  const regexString = "(^|\\s)(" + blockCommentStart + "[\\s]*)([\\s\\S]*?)(" + blockCommentEnd + ")";
-  const regEx = new RegExp(regexString, "gm");
-  const lineTagRegex = getBlockLineTagRegex(state.tagDefs);
-
-  let match: RegExpExecArray | null;
-  while ((match = regEx.exec(text)) !== null) {
-    const content = match[3] as string;
-    const contentStartInDoc = match.index + (match[1]?.length ?? 0) + (match[2]?.length ?? 0);
-    const lines = splitLinesWithOffsets(content);
-    for (const { line, startOffset } of lines) {
-      lineTagRegex.lastIndex = 0; // 每行独立匹配，避免跨行 lastIndex 干扰
-      const lineMatch = lineTagRegex.exec(line);
-      if (!lineMatch) continue;
-      const prefixLen = (lineMatch[1]?.length ?? 0);
-      const tagKey = (lineMatch[2] as string).toLowerCase();
-      const tagDef = findTagByKey(state.tagDefs, tagKey);
-      if (!tagDef) continue;
-      const lineStartInDoc = contentStartInDoc + startOffset;
-      const contentStartOffset = lineStartInDoc + prefixLen;
-      const contentEndOffset = lineStartInDoc + line.length;
-      const list = rangesByTag.get(tagDef.tag) ?? [];
-      list.push(new vscode.Range(editor.document.positionAt(contentStartOffset), editor.document.positionAt(contentEndOffset)));
-      rangesByTag.set(tagDef.tag, list);
-    }
+function matchBlockContentLines(
+  editor: vscode.TextEditor,
+  content: string,
+  contentStartInDoc: number,
+  lineTagRegex: RegExp,
+  tagDefs: TagDef[],
+  rangesByTag: RangesByTag,
+): void {
+  const lines = splitLinesWithOffsets(content);
+  for (const { line, startOffset } of lines) {
+    lineTagRegex.lastIndex = 0;
+    const lineMatch = lineTagRegex.exec(trimRightCr(line));
+    if (!lineMatch) continue;
+    const prefixLen = (lineMatch[1]?.length ?? 0);
+    const tagKey = (lineMatch[2] as string).toLowerCase();
+    const tagDef = findTagByKey(tagDefs, tagKey);
+    if (!tagDef) continue;
+    const lineStartInDoc = contentStartInDoc + startOffset;
+    const contentStartOffset = lineStartInDoc + prefixLen;
+    const contentEndOffset = lineStartInDoc + line.length;
+    const list = rangesByTag.get(tagDef.tag) ?? [];
+    list.push(new vscode.Range(editor.document.positionAt(contentStartOffset), editor.document.positionAt(contentEndOffset)));
+    rangesByTag.set(tagDef.tag, list);
   }
 }
 
 /** JSDoc 块正则：/** ... *\/ ；(^|\\s) 使 /** 前可为换行或空白，与 HTML 块注释一致 */
 const JSDOC_BLOCK_REGEX = /(^|\s)(\/\*\*)+([\s\S]*?)(\*\/)/gm;
 
-/** JSDoc 单行匹配：行首空白 + 可选的 * + 标签 + 可选空格/冒号 + 剩余内容；* 可选以兼容「 * TODO」与「 TODO」两种写法；g 便于每行前重置 lastIndex */
+/** JSDoc 单行匹配：行首空白 + 可选的 * + 标签 + 可选空格/冒号 + 剩余内容；* 可选；i、g */
 function getJSDocLineTagRegex(tagDefs: TagDef[]): RegExp {
-  const patterns = tagDefs.map((t) => tagToCaseInsensitivePattern(t.tag));
-  return new RegExp("^([\\s]*\\*?[\\s]*)(" + patterns.join("|") + ")([ ]*|[:])*(.*)$", "g");
+  const parts = getLineTagPatternParts(tagDefs);
+  if (parts.length === 0) return /(?!)/g;
+  return new RegExp("^([\\s]*\\*?[\\s]*)(" + parts.join("|") + ")([ ]*|[:])*(.*)$", "gi");
 }
 
 /**
- * 在文档中查找 JSDoc 块内匹配标签的区间（多行注释按行重新匹配）
- * @param editor 当前编辑器
- * @param state 高亮状态
- * @param rangesByTag 可变 Map，将把新区间按标签合并进去
+ * 单次收集：单行注释、块注释、JSDoc 三种区间合并写入 rangesByTag（合并原三个查找方法）
  */
-export function findJSDocRanges(editor: vscode.TextEditor, state: HighlightState, rangesByTag: RangesByTag): void {
-  if (!state.supported || (!state.format.highlightBlock && !state.format.highlightJSDoc)) return;
+function findAllRanges(editor: vscode.TextEditor, state: HighlightState, rangesByTag: RangesByTag): void {
+  if (!state.supported) return;
 
   const text = editor.document.getText();
+  const { tagDefs, format } = state;
 
-  let match: RegExpExecArray | null;
-  while ((match = JSDOC_BLOCK_REGEX.exec(text)) !== null) {
-    const content = match[3] as string;
-    const contentStartInDoc = match.index + (match[1]?.length ?? 0) + (match[2]?.length ?? 0);
-    const lines = splitLinesWithOffsets(content);
-    const lineTagRegex = getJSDocLineTagRegex(state.tagDefs); // 每块新建正则，避免跨块状态
-    for (const { line, startOffset } of lines) {
-      lineTagRegex.lastIndex = 0;
-      const lineMatch = lineTagRegex.exec(line);
-      if (!lineMatch) continue;
-      const prefixLen = (lineMatch[1]?.length ?? 0);
-      const tagKey = (lineMatch[2] as string).toLowerCase();
-      const tagDef = findTagByKey(state.tagDefs, tagKey);
-      if (!tagDef) continue;
-      const lineStartInDoc = contentStartInDoc + startOffset;
-      const contentStartOffset = lineStartInDoc + prefixLen;
-      const contentEndOffset = lineStartInDoc + line.length;
-      const list = rangesByTag.get(tagDef.tag) ?? [];
-      list.push(new vscode.Range(editor.document.positionAt(contentStartOffset), editor.document.positionAt(contentEndOffset)));
-      rangesByTag.set(tagDef.tag, list);
+  // 1) 单行注释
+  if (format.highlightSingleLine && state.singleLineRegex) {
+    const re = state.singleLineRegex;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(text)) !== null) {
+      const contentStart = match.index + (match[1]?.length ?? 0) + (match[2]?.length ?? 0);
+      const startPos = editor.document.positionAt(contentStart);
+      if (format.ignoreFirstLine && startPos.line === 0 && startPos.character === 0) continue;
+      const contentEnd = match.index + match[0].length;
+      const endPos = editor.document.positionAt(contentEnd);
+      const tagKey = (match[3] as string).toLowerCase();
+      const tagDef = findTagByKey(tagDefs, tagKey);
+      if (tagDef) {
+        const list = rangesByTag.get(tagDef.tag) ?? [];
+        list.push(new vscode.Range(startPos, endPos));
+        rangesByTag.set(tagDef.tag, list);
+      }
+    }
+  }
+
+  // 2) 块注释（语言配置的 blockComment）
+  if (format.highlightBlock) {
+    const { blockCommentStart, blockCommentEnd } = format;
+    const regEx = new RegExp("(^|\\s)(" + blockCommentStart + "[\\s]*)([\\s\\S]*?)(" + blockCommentEnd + ")", "gm");
+    const lineTagRegex = getBlockLineTagRegex(tagDefs);
+    let match: RegExpExecArray | null;
+    while ((match = regEx.exec(text)) !== null) {
+      const content = match[3] as string;
+      const contentStartInDoc = match.index + (match[1]?.length ?? 0) + (match[2]?.length ?? 0);
+      matchBlockContentLines(editor, content, contentStartInDoc, lineTagRegex, tagDefs, rangesByTag);
+    }
+  }
+
+  // 3) JSDoc 块（/** ... */）
+  if (format.highlightBlock || format.highlightJSDoc) {
+    let match: RegExpExecArray | null;
+    while ((match = JSDOC_BLOCK_REGEX.exec(text)) !== null) {
+      const content = match[3] as string;
+      const contentStartInDoc = match.index + (match[1]?.length ?? 0) + (match[2]?.length ?? 0);
+      const lineTagRegex = getJSDocLineTagRegex(tagDefs);
+      matchBlockContentLines(editor, content, contentStartInDoc, lineTagRegex, tagDefs, rangesByTag);
     }
   }
 }
@@ -280,13 +281,10 @@ export function findJSDocRanges(editor: vscode.TextEditor, state: HighlightState
  * @param editor 当前编辑器
  * @param state 高亮状态（须已由 buildHighlightState 构建）
  * @returns 按标签聚合的区间 Map，可直接传给 applyDecorations
- * @remarks 会依次调用 findSingleLineRanges、findBlockRanges、findJSDocRanges 并合并结果
  */
 export function collectHighlightRanges(editor: vscode.TextEditor, state: HighlightState): RangesByTag {
   const rangesByTag: RangesByTag = new Map();
-  findSingleLineRanges(editor, state, rangesByTag);
-  findBlockRanges(editor, state, rangesByTag);
-  findJSDocRanges(editor, state, rangesByTag);
+  findAllRanges(editor, state, rangesByTag);
   return rangesByTag;
 }
 

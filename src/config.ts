@@ -89,10 +89,12 @@ const COMMENT_CONFIG_FALLBACKS: Readonly<Record<string, string>> = {
     svelte: 'javascript',
 };
 
-/** 内置注释配置：扩展未提供或加载失败时使用，保证 .html 等始终有高亮 */
+/** 内置注释配置：扩展未提供或加载失败时使用，保证 .html、.js、.ts 等始终有高亮 */
 const BUILDIN_COMMENT_CONFIGS: Readonly<Record<string, CommentConfig>> = {
     html: { blockComment: ['<!--', '-->'] },
     htm: { blockComment: ['<!--', '-->'] },
+    javascript: { lineComment: '//', blockComment: ['/*', '*/'] },
+    typescript: { lineComment: '//', blockComment: ['/*', '*/'] },
 };
 
 /**

@@ -73,25 +73,26 @@ export function getTagItems(): { items: TagItem[]; fromDefault: boolean } {
 
 /**
  * 根据标签项构建 TagDef 列表（含 VS Code 装饰类型）
+ * 同一 tag 名在配置中出现多次时，后边的规则覆盖前边的规则
  * @param items 标签项数组，通常来自 getTagItems().items
  * @param log 可选日志，用于无效项与默认兜底告警
  * @returns TagDef 数组；若 items 全无效则使用内置默认项构建
  * @remarks 会创建 decoration，调用方应在扩展停用时 dispose
  */
 export function buildTagDefs(items: TagItem[], log?: Logger): TagDef[] {
-    const result: TagDef[] = [];
+    const tagDefMap = new Map<string, TagDef>();
     for (const item of items) {
         const defs = itemToTagDefs(item);
         if (defs.length === 0) log?.warn('跳过无效的标签项：tag 为空或非字符串');
-        else result.push(...defs);
+        else for (const d of defs) tagDefMap.set(d.tag, d);
     }
-    if (result.length === 0) {
+    if (tagDefMap.size === 0) {
         log?.warn('未得到有效标签，已使用内置默认标签');
         for (const item of DEFAULT_TAG_ITEMS) {
-            result.push(...itemToTagDefs(item));
+            for (const d of itemToTagDefs(item)) tagDefMap.set(d.tag, d);
         }
     }
-    return result;
+    return Array.from(tagDefMap.values());
 }
 
 /**

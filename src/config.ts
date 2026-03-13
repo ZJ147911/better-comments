@@ -89,12 +89,66 @@ const COMMENT_CONFIG_FALLBACKS: Readonly<Record<string, string>> = {
     svelte: 'javascript',
 };
 
-/** 内置注释配置：扩展未提供或加载失败时使用，保证 .html、.js、.ts 等始终有高亮 */
+// ---------------------------------------------------------------------------
+// 常见开发语言：行注释、块注释（与 language-configuration 一致，用于正则构建）
+// ---------------------------------------------------------------------------
+
+/** 使用 JSDoc 风格块注释（/** ... *\/）高亮的语言 ID */
+export const JSDOC_LANGUAGE_IDS: ReadonlySet<string> = new Set([
+    'apex', 'javascript', 'javascriptreact', 'typescript', 'typescriptreact',
+    'vue', 'vue-html', 'dart', 'svelte',
+]);
+
+/** 需忽略首行（如 shebang）的语言 ID，避免误高亮 */
+export const IGNORE_FIRST_LINE_LANGUAGE_IDS: ReadonlySet<string> = new Set([
+    'elixir', 'python', 'tcl', 'ruby', 'shellscript', 'perl', 'r',
+]);
+
+/** 内置注释配置：扩展未提供或加载失败时使用；覆盖常见语言的行注释、块注释 */
 const BUILDIN_COMMENT_CONFIGS: Readonly<Record<string, CommentConfig>> = {
+    // 仅块注释
     html: { blockComment: ['<!--', '-->'] },
     htm: { blockComment: ['<!--', '-->'] },
+    xml: { blockComment: ['<!--', '-->'] },
+    css: { blockComment: ['/*', '*/'] },
+
+    // C 风格：// + /* */
+    c: { lineComment: '//', blockComment: ['/*', '*/'] },
+    cpp: { lineComment: '//', blockComment: ['/*', '*/'] },
+    csharp: { lineComment: '//', blockComment: ['/*', '*/'] },
+    go: { lineComment: '//', blockComment: ['/*', '*/'] },
+    java: { lineComment: '//', blockComment: ['/*', '*/'] },
     javascript: { lineComment: '//', blockComment: ['/*', '*/'] },
     typescript: { lineComment: '//', blockComment: ['/*', '*/'] },
+    javascriptreact: { lineComment: '//', blockComment: ['/*', '*/'] },
+    typescriptreact: { lineComment: '//', blockComment: ['/*', '*/'] },
+    jsonc: { lineComment: '//', blockComment: ['/*', '*/'] },
+    kotlin: { lineComment: '//', blockComment: ['/*', '*/'] },
+    less: { lineComment: '//', blockComment: ['/*', '*/'] },
+    scss: { lineComment: '//', blockComment: ['/*', '*/'] },
+    rust: { lineComment: '//', blockComment: ['/*', '*/'] },
+    swift: { lineComment: '//', blockComment: ['/*', '*/'] },
+    dart: { lineComment: '//', blockComment: ['/*', '*/'] },
+    scala: { lineComment: '//', blockComment: ['/*', '*/'] },
+
+    // 多行注释符
+    php: { lineComment: ['//', '#'], blockComment: ['/*', '*/'] },
+    sql: { lineComment: '--', blockComment: ['/*', '*/'] },
+    lua: { lineComment: '--', blockComment: ['--[[', ']]'] },
+
+    // 仅行注释
+    python: { lineComment: '#' },
+    ruby: { lineComment: '#' },
+    shellscript: { lineComment: '#' },
+    perl: { lineComment: '#' },
+    r: { lineComment: '#' },
+    elixir: { lineComment: '#' },
+    yaml: { lineComment: '#' },
+    dockerfile: { lineComment: '#' },
+    graphql: { lineComment: '#' },
+    makefile: { lineComment: '#' },
+    properties: { lineComment: ['#', '!'] },
+    ini: { lineComment: [';', '#'] },
 };
 
 /**

@@ -14,8 +14,15 @@ import {
 } from './highlight';
 import { createOutputChannel } from './outputChannel';
 
-/** 文档内容变化后延迟执行高亮更新的毫秒数，避免频繁重算 */
 const DEBOUNCE_MS = 100;
+
+function getHighlightOptions(): HighlightOptions {
+  const cfg = vscode.workspace.getConfiguration("better-comments");
+  return {
+    multilineComments: !!cfg.get<boolean>("multilineComments"),
+    highlightPlainText: !!cfg.get<boolean>("highlightPlainText"),
+  };
+}
 
 /**
  * 扩展激活时调用：初始化输出通道、标签与语言配置，并注册各类事件订阅
@@ -58,12 +65,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         activeEditor = editor;
         const languageId = editor.document.languageId;
         const commentConfig = await getCommentConfiguration(languageId, log);
-        const cfg = vscode.workspace.getConfiguration('better-comments');
-        const options = {
-            multilineComments: !!cfg.get<boolean>('multilineComments'),
-            highlightPlainText: !!cfg.get<boolean>('highlightPlainText'),
-        };
-        currentState = buildHighlightState(commentConfig, languageId, tagDefs, options);
+        currentState = buildHighlightState(commentConfig, languageId, tagDefs, getHighlightOptions());
         log.debug(`语言: ${languageId}，支持: ${currentState.supported ? '是' : '否'}`);
         triggerUpdateDecorations();
     }

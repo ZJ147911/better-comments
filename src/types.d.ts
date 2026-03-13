@@ -112,6 +112,11 @@ interface TagItem {
     italic?: boolean;
 }
 
+/** 展开后的标签项：tag 为单字符串，用于导出或统一处理 */
+interface TagItemSingle extends Omit<TagItem, 'tag'> {
+    tag: string;
+}
+
 /** 高亮相关配置（来自 better-comments） */
 interface HighlightOptions {
     /** 是否启用块注释高亮 */

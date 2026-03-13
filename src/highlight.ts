@@ -5,6 +5,7 @@
  */
 
 import * as vscode from "vscode";
+import { JSDOC_LANGUAGE_IDS, IGNORE_FIRST_LINE_LANGUAGE_IDS } from "./config";
 
 /**
  * 正则特殊字符转义
@@ -30,12 +31,6 @@ function getLineTagPatternParts(tagDefs: TagDef[]): string[] {
   return sortTagDefsByLengthDesc(tagDefs).map((t) => tagPatternForLine(t.tag, t.escapedTag));
 }
 
-/** 使用 JSDoc 高亮的语言 ID */
-const JSDOC_LANGUAGES = new Set(["apex", "javascript", "javascriptreact", "typescript", "typescriptreact", "vue", "vue-html", "dart", "svelte"]);
-
-/** 需忽略首行的语言（如 shebang） */
-const IGNORE_FIRST_LINE_LANGUAGES = new Set(["elixir", "python", "tcl", "ruby", "shellscript", "perl", "r"]);
-
 /**
  * 从语言配置与语言 ID 解析注释格式与开关
  * @param commentConfig 当前语言的 lineComment/blockComment，无则返回默认关闭的格式
@@ -58,11 +53,10 @@ export function resolveCommentFormat(commentConfig: CommentConfig | undefined, l
 
   if (!commentConfig) return format;
 
-  const lineComment = commentConfig.lineComment !== undefined && commentConfig.lineComment !== null ? commentConfig.lineComment : null;
-  const blockStart = commentConfig.blockComment?.[0] ?? null;
-  const blockEnd = commentConfig.blockComment?.[1] ?? null;
+  const lineComment = commentConfig.lineComment ?? null;
+  const [blockStart, blockEnd] = commentConfig.blockComment ?? [null, null];
 
-  if (lineComment) {
+  if (lineComment != null) {
     if (typeof lineComment === "string") {
       format.delimiter = escapeRegExp(lineComment).replace(/\//gi, "\\/");
     } else if (Array.isArray(lineComment) && lineComment.length > 0) {
@@ -79,8 +73,8 @@ export function resolveCommentFormat(commentConfig: CommentConfig | undefined, l
     format.highlightBlock = !!options.multilineComments;
   }
 
-  format.highlightJSDoc = JSDOC_LANGUAGES.has(languageCode);
-  format.ignoreFirstLine = IGNORE_FIRST_LINE_LANGUAGES.has(languageCode);
+  format.highlightJSDoc = JSDOC_LANGUAGE_IDS.has(languageCode);
+  format.ignoreFirstLine = IGNORE_FIRST_LINE_LANGUAGE_IDS.has(languageCode);
 
   if (languageCode === "plaintext") {
     format.isPlainText = true;

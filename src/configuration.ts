@@ -36,10 +36,11 @@ export class Configuration {
         }
     }
 
-    /** 回退到 JavaScript 注释配置的语言 ID（如 Vue 单文件组件） */
+    /** 无独立 language 配置时回退的注释配置（按注释风格对齐到已知语言） */
     private static readonly COMMENT_CONFIG_FALLBACKS: Readonly<Record<string, string>> = {
         vue: 'javascript',
         'vue-html': 'javascript',
+        svelte: 'javascript',
     };
 
     /**

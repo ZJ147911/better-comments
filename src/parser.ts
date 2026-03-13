@@ -199,12 +199,18 @@ export class Parser {
             case "typescriptreact":
             case "vue":
             case "vue-html":
+            case "dart":
+            case "svelte":
                 this.highlightJSDoc = true;
                 break;
 
             case "elixir":
             case "python":
             case "tcl":
+            case "ruby":
+            case "shellscript":
+            case "perl":
+            case "r":
                 this.ignoreFirstLine = true;
                 break;
             

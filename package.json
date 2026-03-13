@@ -63,66 +63,62 @@
           "default": false
         },
         "better-comments.tags": {
+          "type": "array",
           "description": "用于注释着色的标签。可为：字符串（逗号分隔）、字符串数组、或对象数组（tag + color 等）。修改后需重启 VS Code 生效",
-          "oneOf": [
-            {
-              "type": "string",
-              "description": "逗号分隔的标签名，如 \"todo, !, ?\""
-            },
-            {
-              "type": "array",
-              "items": {
-                "type": "string"
+          "items": {
+            "type": "object",
+            "title": "tag item",
+            "properties": {
+              "tag": {
+                "type": [
+                  "string",
+                  "array"
+                ],
+                "description": "标签名字符串或字符串数组，不区分大小写",
+                "items": {
+                  "type": "string"
+                }
               },
-              "description": "标签名字符串数组"
-            },
-            {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "tag": {
-                    "oneOf": [
-                      {
-                        "type": "string",
-                        "description": "单个标签名"
-                      },
-                      {
-                        "type": "array",
-                        "items": {
-                          "type": "string"
-                        },
-                        "description": "多个标签名共用同一样式"
-                      }
-                    ]
-                  },
-                  "color": {
-                    "type": "string"
-                  },
-                  "backgroundColor": {
-                    "type": "string"
-                  },
-                  "strikethrough": {
-                    "type": "boolean"
-                  },
-                  "underline": {
-                    "type": "boolean"
-                  },
-                  "bold": {
-                    "type": "boolean"
-                  },
-                  "italic": {
-                    "type": "boolean"
-                  }
-                },
-                "required": [
-                  "tag"
-                ]
+              "color": {
+                "type": "string",
+                "description": "字体颜色，如：#FF2D00"
               },
-              "description": "带样式的标签对象数组"
+              "strikethrough": {
+                "type": "boolean",
+                "description": "启用文本删除线（ strikethrough）"
+              },
+              "underline": {
+                "type": "boolean",
+                "description": "启用文本下划线"
+              },
+              "backgroundColor": {
+                "type": "string",
+                "description": "背景颜色，如：transparent（透明）"
+              },
+              "bold": {
+                "type": "boolean",
+                "description": "设置文本字体为粗体"
+              },
+              "italic": {
+                "type": "boolean",
+                "description": "设置文本字体为斜体"
+              },
+              "multiline": {
+                "type": "boolean",
+                "description": "启用多行注释装饰（直到空白行为止）"
+              }
             }
-          ],
+          },
           "default": [
+            {
+              "tag": "#",
+              "color": "#18b566",
+              "strikethrough": false,
+              "underline": false,
+              "backgroundColor": "transparent",
+              "bold": true,
+              "italic": false
+            },
             {
               "tag": "!",
               "color": "#FF2D00",
@@ -151,25 +147,40 @@
               "italic": false
             },
             {
-              "tag": [
-                "todo",
-                "fix",
-                "feat"
-              ],
+              "tag": "todo",
               "color": "#FF8C00",
               "strikethrough": false,
               "underline": false,
               "backgroundColor": "transparent",
               "bold": false,
+              "italic": false,
+              "multiline": true
+            },
+            {
+              "tag": "bug",
+              "color": "#E84393",
+              "strikethrough": false,
+              "underline": true,
+              "backgroundColor": "#FDA7DF20",
+              "bold": true,
               "italic": false
             },
             {
-              "tag": "*",
-              "color": "#98C379",
+              "tag": "feat",
+              "color": "#9B59B6",
               "strikethrough": false,
               "underline": false,
-              "backgroundColor": "transparent",
-              "bold": false,
+              "backgroundColor": "#9B59B620",
+              "bold": true,
+              "italic": true
+            },
+            {
+              "tag": "fix",
+              "color": "#FD79A8",
+              "strikethrough": false,
+              "underline": false,
+              "backgroundColor": "#FD79A820",
+              "bold": true,
               "italic": false
             }
           ]

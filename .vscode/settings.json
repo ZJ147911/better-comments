@@ -7,5 +7,8 @@
     "search.exclude": {
         "out": true // 设为 false 可在搜索结果中包含 "out" 目录
 	},
-	"vsicons.presets.angular": false
+  "vsicons.presets.angular": false,
+  "cSpell.words": [
+    "rspack"
+  ]
 }

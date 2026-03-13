@@ -5,19 +5,6 @@
  */
 
 import * as vscode from 'vscode';
-import type { Logger } from './outputChannel';
-import type { TagDef } from './types';
-
-/** 配置项中单条 tag 的原始结构（与 package.json contributes 一致） */
-export interface TagItem {
-    tag: string;
-    color?: string;
-    backgroundColor?: string;
-    strikethrough?: boolean;
-    underline?: boolean;
-    bold?: boolean;
-    italic?: boolean;
-}
 
 /** 内置默认标签项（与 package.json 默认一致） */
 const DEFAULT_TAG_ITEMS: TagItem[] = [

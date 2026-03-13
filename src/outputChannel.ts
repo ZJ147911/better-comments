@@ -8,19 +8,6 @@ import * as vscode from 'vscode';
 
 const CHANNEL_NAME = 'Better Comments';
 
-/** 日志级别，用于过滤与输出 */
-export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
-
-/**
- * 可选日志接口：扩展内各模块可注入，未注入时使用 noopLogger 无输出
- */
-export interface Logger {
-    debug(message: string): void;
-    info(message: string): void;
-    warn(message: string): void;
-    error(message: string): void;
-}
-
 /** 级别对应的数值，用于比较最低级别 */
 const LEVEL_ORDER: Record<LogLevel, number> = {
     debug: 0,

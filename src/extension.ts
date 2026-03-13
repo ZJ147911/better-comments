@@ -12,7 +12,6 @@ import {
     collectHighlightRanges,
     applyDecorations,
 } from './highlight';
-import type { HighlightState } from './types';
 import { createOutputChannel } from './outputChannel';
 
 /** 文档内容变化后延迟执行高亮更新的毫秒数，避免频繁重算 */

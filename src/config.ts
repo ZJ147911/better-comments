@@ -6,8 +6,6 @@
 
 import * as path from 'path';
 import * as vscode from 'vscode';
-import type { Logger } from './outputChannel';
-import type { CommentConfig } from './types';
 
 /** 将 Uint8Array 解码为 UTF-8 字符串；Node 用 Buffer，Web 用全局 TextDecoder，不依赖 util */
 function decodeUtf8(bytes: Uint8Array): string {

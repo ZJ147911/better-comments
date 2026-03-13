@@ -5,18 +5,6 @@
  */
 
 import * as vscode from 'vscode';
-import type { CommentConfig, CommentFormat, HighlightState, TagDef } from './types';
-
-/** 高亮相关配置（来自 better-comments） */
-export interface HighlightOptions {
-    /** 是否启用块注释高亮 */
-    multilineComments?: boolean;
-    /** 纯文本模式下是否高亮（仅当语言为 plaintext 时生效） */
-    highlightPlainText?: boolean;
-}
-
-/** 按标签名聚合的区间列表，用于 applyDecorations */
-export type RangesByTag = Map<string, vscode.Range[]>;
 
 /**
  * 正则特殊字符转义

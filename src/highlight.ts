@@ -193,7 +193,8 @@ export function findSingleLineRanges(
  */
 function getBlockInnerTagRegex(tagDefs: TagDef[]): RegExp {
     const characters = tagDefs.map(t => t.escapedTag);
-    const commentMatchString = '(^)+([ \\t]*[ \\t]*)(' + characters.join('|') + ')([ ]*|[:])+([^*/][^\\r\\n]*)';
+    // 标签前允许任意空白（含换行），以支持多行块注释如 HTML
+    const commentMatchString = '(^)([\\s]*)(' + characters.join('|') + ')([ ]*|[:])+([^*/][^\\r\\n]*)';
     return new RegExp(commentMatchString, 'igm');
 }
 
@@ -212,23 +213,21 @@ export function findBlockRanges(
 
     const text = editor.document.getText();
     const { blockCommentStart, blockCommentEnd } = state.format;
-    const regexString = '(^|[ \\t])(' + blockCommentStart + '[\\s]*)([\\s\\S]*?)(' + blockCommentEnd + ')';
+    // 允许 <!-- 前为行首或任意空白（含换行），以支持 HTML 等块注释
+    const regexString = '(^|\\s)(' + blockCommentStart + '[\\s]*)([\\s\\S]*?)(' + blockCommentEnd + ')';
     const regEx = new RegExp(regexString, 'gm');
     const commentRegEx = getBlockInnerTagRegex(state.tagDefs);
 
-    const rawEnd = state.format.rawBlockCommentEnd ?? '';
     let match: RegExpExecArray | null;
     while ((match = regEx.exec(text)) !== null) {
-        const block = match[0];
+        // 仅在「块内容」上匹配标签（即 <!-- 与 --> 之间的部分），避免把 <!-- 当作标签前空白
+        const content = match[3] as string;
+        const contentStartInDoc = match.index + (match[1]?.length ?? 0) + (match[2]?.length ?? 0);
         let line: RegExpExecArray | null;
-        while ((line = commentRegEx.exec(block)) !== null) {
-            const lineStart = match.index + line.index;
+        while ((line = commentRegEx.exec(content)) !== null) {
+            const lineStart = contentStartInDoc + line.index;
             const contentStartOffset = lineStart + (line[2]?.length ?? 0);
             let contentEndOffset = lineStart + line[0].length;
-            if (rawEnd && line[0].trimEnd().endsWith(rawEnd)) {
-                const trimmed = line[0].trimEnd();
-                contentEndOffset = lineStart + trimmed.length - rawEnd.length;
-            }
             const startPos = editor.document.positionAt(contentStartOffset);
             const endPos = editor.document.positionAt(contentEndOffset);
             const tagKey = (line[3] as string).toLowerCase();

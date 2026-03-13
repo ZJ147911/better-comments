@@ -148,7 +148,12 @@ export async function getCommentConfiguration(
             const rawContent = await vscode.workspace.fs.readFile(vscode.Uri.file(filePath));
             const content = decodeUtf8(rawContent);
             const config = parseJsonc(content) as { comments?: CommentConfig };
-            const comments = config.comments;
+            let comments = config.comments;
+            // HTML 等仅有块注释的语言：扩展配置缺少 blockComment 时用内置补全
+            if (languageCode in BUILDIN_COMMENT_CONFIGS && !comments?.blockComment) {
+                const builtin = BUILDIN_COMMENT_CONFIGS[languageCode];
+                comments = { ...comments, blockComment: builtin.blockComment } as CommentConfig;
+            }
             commentConfigCache.set(languageCode, comments);
             log.debug(`已从文件加载语言 "${languageCode}" 的注释配置`);
             return comments;

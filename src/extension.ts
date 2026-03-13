@@ -26,19 +26,25 @@ export async function activate(context: vscode.ExtensionContext) {
         }, DEBOUNCE_MS);
     }
 
-    if (vscode.window.activeTextEditor) {
-        activeEditor = vscode.window.activeTextEditor;
-        await parser.SetRegex(activeEditor.document.languageId);
+    /** 当前激活的编辑器变化或打开的文件即为当前文档时，更新高亮 */
+    async function updateForEditor(editor: vscode.TextEditor | undefined) {
+        if (!editor) return;
+        activeEditor = editor;
+        await parser.SetRegex(editor.document.languageId);
         triggerUpdateDecorations();
+    }
+
+    if (vscode.window.activeTextEditor) {
+        await updateForEditor(vscode.window.activeTextEditor);
     }
 
     context.subscriptions.push(
         vscode.extensions.onDidChange(() => configuration.UpdateLanguagesDefinitions()),
-        vscode.window.onDidChangeActiveTextEditor(async editor => {
-            if (!editor) return;
-            activeEditor = editor;
-            await parser.SetRegex(editor.document.languageId);
-            triggerUpdateDecorations();
+        vscode.window.onDidChangeActiveTextEditor(editor => updateForEditor(editor)),
+        vscode.workspace.onDidOpenTextDocument(doc => {
+            if (vscode.window.activeTextEditor?.document === doc) {
+                updateForEditor(vscode.window.activeTextEditor);
+            }
         }),
         vscode.workspace.onDidChangeTextDocument(event => {
             if (activeEditor && event.document === activeEditor.document) {

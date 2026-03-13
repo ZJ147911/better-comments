@@ -1,6 +1,8 @@
 # Better Comments
 
-The Better Comments extension will help you create more human-friendly comments in your code.  
+The Better Comments extension will help you create more human-friendly comments in your code.
+
+**构建与打包**：本地构建、Rspack/tsc 说明及 `vsce package` 打包步骤见 [BUILD.md](./BUILD.md)。  
 With this extension, you will be able to categorise your annotations into:
 * Alerts
 * Queries

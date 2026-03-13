@@ -89,6 +89,12 @@ const COMMENT_CONFIG_FALLBACKS: Readonly<Record<string, string>> = {
     svelte: 'javascript',
 };
 
+/** 内置注释配置：扩展未提供或加载失败时使用，保证 .html 等始终有高亮 */
+const BUILDIN_COMMENT_CONFIGS: Readonly<Record<string, CommentConfig>> = {
+    html: { blockComment: ['<!--', '-->'] },
+    htm: { blockComment: ['<!--', '-->'] },
+};
+
 /**
  * 根据已安装扩展重新扫描各语言的配置文件路径
  * @param log 日志接口，用于输出加载数量
@@ -135,23 +141,28 @@ export async function getCommentConfiguration(
     if (!languageConfigFiles.has(resolvedId)) {
         log.debug(`未找到 "${resolvedId}" 的配置，重新扫描扩展`);
         updateLanguageDefinitions(log);
-        if (!languageConfigFiles.has(resolvedId)) {
-            log.warn(`未找到语言 "${languageCode}" 的注释配置，已跳过`);
-            return undefined;
+    }
+    if (languageConfigFiles.has(resolvedId)) {
+        try {
+            const filePath = languageConfigFiles.get(resolvedId)!;
+            const rawContent = await vscode.workspace.fs.readFile(vscode.Uri.file(filePath));
+            const content = decodeUtf8(rawContent);
+            const config = parseJsonc(content) as { comments?: CommentConfig };
+            const comments = config.comments;
+            commentConfigCache.set(languageCode, comments);
+            log.debug(`已从文件加载语言 "${languageCode}" 的注释配置`);
+            return comments;
+        } catch (e) {
+            commentConfigCache.set(languageCode, undefined);
+            log.error(`解析语言 "${languageCode}" 的配置文件失败: ${e instanceof Error ? e.message : String(e)}`);
         }
     }
-    try {
-        const filePath = languageConfigFiles.get(resolvedId)!;
-        const rawContent = await vscode.workspace.fs.readFile(vscode.Uri.file(filePath));
-        const content = decodeUtf8(rawContent);
-        const config = parseJsonc(content) as { comments?: CommentConfig };
-        const comments = config.comments;
-        commentConfigCache.set(languageCode, comments);
-        log.debug(`已从文件加载语言 "${languageCode}" 的注释配置`);
-        return comments;
-    } catch (e) {
-        commentConfigCache.set(languageCode, undefined);
-        log.error(`解析语言 "${languageCode}" 的配置文件失败: ${e instanceof Error ? e.message : String(e)}`);
-        return undefined;
+    const builtin = BUILDIN_COMMENT_CONFIGS[languageCode] ?? BUILDIN_COMMENT_CONFIGS[resolvedId];
+    if (builtin) {
+        commentConfigCache.set(languageCode, builtin);
+        log.debug(`语言 "${languageCode}" 使用内置注释配置`);
+        return builtin;
     }
+    log.warn(`未找到语言 "${languageCode}" 的注释配置，已跳过`);
+    return undefined;
 }

@@ -71,6 +71,7 @@ export function resolveCommentFormat(
     if (blockStart && blockEnd) {
         format.blockCommentStart = escapeRegExp(blockStart);
         format.blockCommentEnd = escapeRegExp(blockEnd);
+        format.rawBlockCommentEnd = blockEnd;
         format.highlightBlock = !!options.multilineComments;
     }
 
@@ -172,9 +173,11 @@ export function findSingleLineRanges(
     const re = state.singleLineRegex;
     let match: RegExpExecArray | null;
     while ((match = re.exec(text)) !== null) {
-        const startPos = editor.document.positionAt(match.index);
+        const contentStart = match.index + (match[1]?.length ?? 0) + (match[2]?.length ?? 0);
+        const startPos = editor.document.positionAt(contentStart);
         if (state.format.ignoreFirstLine && startPos.line === 0 && startPos.character === 0) continue;
-        const endPos = editor.document.positionAt(match.index + match[0].length);
+        const contentEnd = match.index + match[0].length;
+        const endPos = editor.document.positionAt(contentEnd);
         const tagKey = (match[3] as string).toLowerCase();
         const tagDef = findTagByKey(state.tagDefs, tagKey);
         if (tagDef) {
@@ -213,13 +216,21 @@ export function findBlockRanges(
     const regEx = new RegExp(regexString, 'gm');
     const commentRegEx = getBlockInnerTagRegex(state.tagDefs);
 
+    const rawEnd = state.format.rawBlockCommentEnd ?? '';
     let match: RegExpExecArray | null;
     while ((match = regEx.exec(text)) !== null) {
         const block = match[0];
         let line: RegExpExecArray | null;
         while ((line = commentRegEx.exec(block)) !== null) {
-            const startPos = editor.document.positionAt(match.index + line.index + (line[2]?.length ?? 0));
-            const endPos = editor.document.positionAt(match.index + line.index + line[0].length);
+            const lineStart = match.index + line.index;
+            const contentStartOffset = lineStart + (line[2]?.length ?? 0);
+            let contentEndOffset = lineStart + line[0].length;
+            if (rawEnd && line[0].trimEnd().endsWith(rawEnd)) {
+                const trimmed = line[0].trimEnd();
+                contentEndOffset = lineStart + trimmed.length - rawEnd.length;
+            }
+            const startPos = editor.document.positionAt(contentStartOffset);
+            const endPos = editor.document.positionAt(contentEndOffset);
             const tagKey = (line[3] as string).toLowerCase();
             const tagDef = findTagByKey(state.tagDefs, tagKey);
             if (tagDef) {
@@ -251,13 +262,21 @@ export function findJSDocRanges(
     const commentMatchString = '(^)+([ \\t]*\\*[ \\t]*)(' + state.tagDefs.map(t => t.escapedTag).join('|') + ')([ ]*|[:])+([^*/][^\\r\\n]*)';
     const commentRegEx = new RegExp(commentMatchString, 'igm');
 
+    const jsdocEnd = '*/';
     let match: RegExpExecArray | null;
     while ((match = JSDOC_BLOCK_REGEX.exec(text)) !== null) {
         const block = match[0];
         let line: RegExpExecArray | null;
         while ((line = commentRegEx.exec(block)) !== null) {
-            const startPos = editor.document.positionAt(match.index + line.index + (line[2]?.length ?? 0));
-            const endPos = editor.document.positionAt(match.index + line.index + line[0].length);
+            const lineStart = match.index + line.index;
+            const contentStartOffset = lineStart + (line[2]?.length ?? 0);
+            let contentEndOffset = lineStart + line[0].length;
+            const trimmed = line[0].trimEnd();
+            if (trimmed.endsWith(jsdocEnd)) {
+                contentEndOffset = lineStart + trimmed.length - jsdocEnd.length;
+            }
+            const startPos = editor.document.positionAt(contentStartOffset);
+            const endPos = editor.document.positionAt(contentEndOffset);
             const tagKey = (line[3] as string).toLowerCase();
             const tagDef = findTagByKey(state.tagDefs, tagKey);
             if (tagDef) {

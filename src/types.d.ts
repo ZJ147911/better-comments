@@ -44,6 +44,8 @@ interface CommentFormat {
     blockCommentStart: string;
     /** 块注释结束的正则转义形式 */
     blockCommentEnd: string;
+    /** 块注释结束符原文（用于只高亮内容时裁掉末尾） */
+    rawBlockCommentEnd?: string;
     /** 是否高亮单行注释（如 //、#） */
     highlightSingleLine: boolean;
     /** 是否高亮块注释（C 风格或 HTML 风格） */

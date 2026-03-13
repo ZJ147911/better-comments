@@ -1,9 +1,34 @@
+/**
+ * 注释高亮解析器
+ * @file parser.ts
+ * @description 根据语言配置与 better-comments.tags 构建正则，在文档中查找单行/块/JSDoc 注释并收集待装饰区间
+ */
+
 import * as vscode from 'vscode';
 import { Configuration } from './configuration';
 import type { Logger } from './outputChannel';
 
+/** 内部：单条标签及其装饰与当前匹配到的区间 */
+interface CommentTag {
+    tag: string;
+    escapedTag: string;
+    ranges: { range: vscode.Range }[];
+    decoration: vscode.TextEditorDecorationType;
+}
+
+/** 内部：better-comments 配置项（tags、multilineComments、highlightPlainText 等） */
+interface Contributions {
+    tags?: Array<{ tag: string; color?: string; backgroundColor?: string; strikethrough?: boolean; underline?: boolean; bold?: boolean; italic?: boolean }>;
+    multilineComments?: boolean;
+    highlightPlainText?: boolean;
+}
+
+/**
+ * 注释高亮解析器：按语言设置分隔符与开关，在编辑器中查找注释并应用装饰
+ */
 export class Parser {
     private tags: CommentTag[] = [];
+    /** 单行注释匹配正则的源字符串（分隔符 + 标签 + 尾部） */
     private expression: string = "";
 
     private delimiter: string = "";
@@ -14,25 +39,22 @@ export class Parser {
     private highlightMultilineComments = false;
     private highlightJSDoc = false;
 
-    /** 开启后允许纯文本文件也显示注释高亮 */
+    /** 为 true 时按纯文本规则高亮（依赖 highlightPlainText 配置） */
     private isPlainText = false;
 
-    /** 用于避免文件首行（如 Python 的 shebang）被当作注释着色 */
+    /** 为 true 时跳过首行，避免 shebang 等被当注释 */
     private ignoreFirstLine = false;
 
-    /** 当检测到支持的语言时用于触发高亮逻辑 */
+    /** 当前语言是否支持注释高亮（有有效语言配置则为 true） */
     public supportedLanguage = true;
 
-    /** 从 package.json 读取的配置 */
     private contributions: Contributions = vscode.workspace.getConfiguration('better-comments') as any;
-
-    /** 用于在启动时解析各语言注释配置 */
     private configuration: Configuration;
     private readonly log: Logger;
 
     /**
-     * 创建 Parser 实例
-     * @param config 语言注释配置
+     * 创建解析器实例并从未配置中加载标签列表
+     * @param config 语言注释配置提供方（用于获取 lineComment/blockComment）
      * @param logger 可选，用于输出面板日志
      */
     public constructor(config: Configuration, logger?: Logger) {
@@ -42,10 +64,11 @@ export class Parser {
     }
 
     /**
-     * 根据 package.json 中的配置设置用于匹配注释的正则
-     * @param languageCode 当前语言的短标识，参见 https://code.visualstudio.com/docs/languages/identifiers
+     * 按语言设置分隔符与开关，并构建单行注释匹配正则
+     * @param languageCode 语言短标识，参见 https://code.visualstudio.com/docs/languages/identifiers
+     * @remarks 会更新 supportedLanguage、delimiter、expression 等；仅当 supportedLanguage 为 true 时单行正则有效
      */
-    public async SetRegex(languageCode: string) {
+    public async SetRegex(languageCode: string): Promise<void> {
         await this.setDelimiter(languageCode);
 
         if (!this.supportedLanguage) {
@@ -67,8 +90,9 @@ export class Parser {
     }
 
     /**
-     * 查找所有按给定分隔符划分且匹配 package.json 中标签的单行注释
-     * @param activeEditor 当前代码文档所在的编辑器
+     * 在文档中查找单行注释（如 // todo、# !）并写入各 tag 的 ranges
+     * @param activeEditor 当前编辑器
+     * @remarks 依赖已通过 SetRegex 构建的 expression；若 highlightSingleLineComments 为 false 则直接返回
      */
     public FindSingleLineComments(activeEditor: vscode.TextEditor): void {
 
@@ -94,8 +118,9 @@ export class Parser {
     }
 
     /**
-     * 按起始与结束分隔符查找块注释
-     * @param activeEditor 当前代码文档所在的编辑器
+     * 在文档中查找块注释（如 /* *\/、<!-- -->）内匹配标签的行并写入各 tag 的 ranges
+     * @param activeEditor 当前编辑器
+     * @remarks 依赖 blockCommentStart/End 与 contributions.multilineComments
      */
     public FindBlockComments(activeEditor: vscode.TextEditor): void {
 
@@ -132,8 +157,9 @@ export class Parser {
     }
 
     /**
-     * 查找所有以 "*" 开头的多行 JSDoc 注释
-     * @param activeEditor 当前代码文档所在的编辑器
+     * 在文档中查找 /** ... *\/ 形式的 JSDoc 块内匹配标签的行并写入各 tag 的 ranges
+     * @param activeEditor 当前编辑器
+     * @remarks 仅当 highlightJSDoc 或 highlightMultilineComments 为 true 时执行
      */
     public FindJSDocComments(activeEditor: vscode.TextEditor): void {
 
@@ -163,8 +189,8 @@ export class Parser {
     }
 
     /**
-     * 在找到所有相关注释后应用装饰
-     * @param activeEditor 当前代码文档所在的编辑器
+     * 将各 tag 收集到的 ranges 应用到编辑器装饰，并清空 ranges
+     * @param activeEditor 当前编辑器
      */
     public ApplyDecorations(activeEditor: vscode.TextEditor): void {
         for (let tag of this.tags) {
@@ -176,8 +202,8 @@ export class Parser {
     //#region 私有方法
 
     /**
-     * 设置指定语言的注释分隔符 [//, #, --, ']
-     * @param languageCode 当前语言的短标识，参见 https://code.visualstudio.com/docs/languages/identifiers
+     * 从语言配置解析 lineComment/blockComment，并设置 JSDoc、首行忽略、纯文本等开关
+     * @param languageCode 语言短标识
      */
     private async setDelimiter(languageCode: string): Promise<void> {
         this.supportedLanguage = false;
@@ -222,13 +248,13 @@ export class Parser {
             
             case "plaintext":
                 this.isPlainText = true;
-                this.supportedLanguage = this.contributions.highlightPlainText;
+                this.supportedLanguage = !!this.contributions.highlightPlainText;
                 break;
         }
     }
 
     /**
-     * 初始化高亮标签供解析器使用
+     * 从 better-comments.tags 配置构建 tags 列表（含转义与 decoration），无效时回退默认标签
      */
     private setTags(): void {
         const raw = this.contributions?.tags;
@@ -297,30 +323,26 @@ export class Parser {
         ];
     }
 
-    /** 返回用于正则的转义标签模式（单行/块注释/JSDoc 匹配） */
+    /** 返回各 tag 的 escapedTag 数组，用于拼正则 */
     private getTagEscapedPattern(): string[] {
         return this.tags.map(t => t.escapedTag);
     }
 
-    /** 按不区分大小写的标签名查找标签 */
+    /** 按不区分大小写的标签名在 this.tags 中查找 */
     private findTagByKey(tagKey: string): CommentTag | undefined {
         return this.tags.find(t => t.tag.toLowerCase() === tagKey);
     }
 
-    /**
-     * 对字符串进行转义以便在正则中使用
-     * @param input 待转义字符串
-     * @returns 转义后的字符串
-     */
+    /** 对字符串进行正则特殊字符转义 */
     private escapeRegExp(input: string): string {
         return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
     /**
-     * 设置单行与多行注释的高亮格式
-     * @param singleLine 单行注释分隔符，为 null 表示不支持单行注释
-     * @param start 块注释起始分隔符
-     * @param end 块注释结束分隔符
+     * 根据语言配置设置 delimiter、blockCommentStart/End 及单行/块高亮开关
+     * @param singleLine 行注释起始符，null 表示仅块注释（如 HTML）
+     * @param start 块注释起始
+     * @param end 块注释结束
      */
     private setCommentFormat(
             singleLine: string | string[] | null,
@@ -349,8 +371,7 @@ export class Parser {
         if (start && end) {
             this.blockCommentStart = this.escapeRegExp(start);
             this.blockCommentEnd = this.escapeRegExp(end);
-
-            this.highlightMultilineComments = this.contributions.multilineComments;
+            this.highlightMultilineComments = !!this.contributions.multilineComments;
         }
     }
 

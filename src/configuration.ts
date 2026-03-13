@@ -1,3 +1,9 @@
+/**
+ * 语言注释配置（类形式，与 extension/parser 配合）
+ * @file configuration.ts
+ * @description 从已安装扩展的 language-configuration.json 读取各语言注释格式，带缓存与回退
+ */
+
 import * as path from 'path';
 import * as vscode from 'vscode';
 import type { Logger } from './outputChannel';
@@ -72,14 +78,17 @@ function parseJsonc(text: string): unknown {
     return JSON.parse(out.join(''));
 }
 
+/**
+ * 语言注释配置管理：扫描扩展、加载并缓存各语言的 lineComment/blockComment
+ */
 export class Configuration {
     private readonly commentConfig = new Map<string, CommentConfig | undefined>();
     private readonly languageConfigFiles = new Map<string, string>();
     private readonly log: Logger;
 
     /**
-     * 创建配置实例并加载各语言定义
-     * @param logger 可选，用于输出面板日志
+     * 创建配置实例并立即扫描已安装扩展的语言定义
+     * @param logger 可选，用于输出面板日志；未传则无输出
      */
     public constructor(logger?: Logger) {
         this.log = logger ?? { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} };
@@ -87,10 +96,10 @@ export class Configuration {
     }
 
     /**
-     * 根据已安装扩展生成各语言对应的配置文件路径映射
-     * 外部扩展可覆盖 VSCode 默认的语言配置
+     * 根据已安装扩展生成各语言对应的 language-configuration 文件路径映射
+     * @remarks 会清空 commentConfig 缓存；外部扩展可覆盖 VS Code 默认语言配置
      */
-    public UpdateLanguagesDefinitions() {
+    public UpdateLanguagesDefinitions(): void {
         this.commentConfig.clear();
 
         interface LangContribution {
@@ -115,7 +124,7 @@ export class Configuration {
         this.log.info(`已加载 ${this.languageConfigFiles.size} 个语言的注释配置`);
     }
 
-    /** 无独立 language 配置时回退的注释配置（按注释风格对齐到已知语言） */
+    /** 无独立 language 配置时回退的语言 ID（如 vue -> javascript） */
     private static readonly COMMENT_CONFIG_FALLBACKS: Readonly<Record<string, string>> = {
         vue: 'javascript',
         'vue-html': 'javascript',
@@ -123,8 +132,10 @@ export class Configuration {
     };
 
     /**
-     * 获取指定语言的注释配置
-     * Vue / Vue-HTML 会回退为 JavaScript 注释语法（用于 script 块）
+     * 获取指定语言的注释配置（lineComment / blockComment）
+     * @param languageCode 语言短标识
+     * @returns 注释配置，未找到或解析失败为 undefined
+     * @remarks Vue / Vue-HTML / Svelte 会回退为 JavaScript 注释语法
      */
     public async GetCommentConfiguration(languageCode: string): Promise<CommentConfig | undefined> {
         if (this.commentConfig.has(languageCode)) {

@@ -1,11 +1,22 @@
+/**
+ * Better Comments 扩展入口
+ * @file extension.ts
+ * @description 激活时创建配置与解析器，订阅编辑器/文档/扩展变化，按语言更新注释高亮装饰
+ */
+
 import * as vscode from 'vscode';
 import { Configuration } from './configuration';
 import { Parser } from './parser';
 import { createOutputChannel } from './outputChannel';
 
+/** 文档内容变化后延迟执行高亮更新的毫秒数，避免频繁重算 */
 const DEBOUNCE_MS = 100;
 
-export async function activate(context: vscode.ExtensionContext) {
+/**
+ * 扩展激活时调用：初始化输出通道、配置与解析器，并注册各类事件订阅
+ * @param context 扩展上下文，用于注册 subscriptions
+ */
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const log = createOutputChannel(context);
 
     let activeEditor: vscode.TextEditor | undefined;
@@ -13,7 +24,8 @@ export async function activate(context: vscode.ExtensionContext) {
     const parser = new Parser(configuration, log);
     let decorationTimeout: ReturnType<typeof setTimeout> | undefined;
 
-    function updateDecorations() {
+    /** 对当前激活编辑器执行单行/块/JSDoc 查找并应用装饰 */
+    function updateDecorations(): void {
         if (!activeEditor || !parser.supportedLanguage) return;
         parser.FindSingleLineComments(activeEditor);
         parser.FindBlockComments(activeEditor);
@@ -21,7 +33,8 @@ export async function activate(context: vscode.ExtensionContext) {
         parser.ApplyDecorations(activeEditor);
     }
 
-    function triggerUpdateDecorations() {
+    /** 防抖：在 DEBOUNCE_MS 后执行 updateDecorations */
+    function triggerUpdateDecorations(): void {
         if (decorationTimeout) clearTimeout(decorationTimeout);
         decorationTimeout = setTimeout(() => {
             decorationTimeout = undefined;
@@ -29,8 +42,8 @@ export async function activate(context: vscode.ExtensionContext) {
         }, DEBOUNCE_MS);
     }
 
-    /** 当前激活的编辑器变化或打开的文件即为当前文档时，更新高亮 */
-    async function updateForEditor(editor: vscode.TextEditor | undefined) {
+    /** 切换或打开编辑器时，按文档语言设置解析器并触发高亮 */
+    async function updateForEditor(editor: vscode.TextEditor | undefined): Promise<void> {
         if (!editor) return;
         activeEditor = editor;
         const languageId = editor.document.languageId;
@@ -65,4 +78,5 @@ export async function activate(context: vscode.ExtensionContext) {
     );
 }
 
-export function deactivate() { }
+/** 扩展停用时调用（当前无清理逻辑） */
+export function deactivate(): void {}

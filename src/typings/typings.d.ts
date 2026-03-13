@@ -1,3 +1,4 @@
+/** 全局类型补充（部分由 parser 内局部接口覆盖） */
 interface CommentTag {
     tag: string;
     escapedTag: string;

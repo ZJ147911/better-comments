@@ -233,33 +233,53 @@ export class Parser {
         if (!raw || !Array.isArray(raw) || (raw as unknown[]).length === 0) {
             this.log.warn('未读取到 better-comments.tags 配置，已使用内置默认标签');
         }
-        for (let item of items) {
-            let options: vscode.DecorationRenderOptions = { color: item.color, backgroundColor: item.backgroundColor };
+        for (const item of items) {
+            const tag = typeof item.tag === 'string' ? item.tag : String(item?.tag ?? '');
+            if (!tag) {
+                this.log.warn('跳过无效的标签项：tag 为空或非字符串');
+                continue;
+            }
+            const color = typeof item.color === 'string' ? item.color : 'transparent';
+            const backgroundColor = typeof item.backgroundColor === 'string' ? item.backgroundColor : 'transparent';
+            const options: vscode.DecorationRenderOptions = { color, backgroundColor };
             options.textDecoration = "";
 
             if (item.strikethrough) {
                 options.textDecoration += "line-through";
             }
-            
             if (item.underline) {
                 options.textDecoration += " underline";
             }
-            
             if (item.bold) {
                 options.fontWeight = "bold";
             }
-
             if (item.italic) {
                 options.fontStyle = "italic";
             }
 
-            let escapedSequence = item.tag.replace(/([()[{*+.$^\\|?])/g, '\\$1');
+            const escapedSequence = tag.replace(/([()[{*+.$^\\|?])/g, '\\$1');
             this.tags.push({
-                tag: item.tag,
+                tag,
                 escapedTag: escapedSequence.replace(/\//gi, "\\/"),
                 ranges: [],
                 decoration: vscode.window.createTextEditorDecorationType(options)
             });
+        }
+        if (this.tags.length === 0) {
+            this.log.warn('未得到有效标签，已使用内置默认标签');
+            for (const item of this.getDefaultTags()) {
+                let opts: vscode.DecorationRenderOptions = { color: item.color, backgroundColor: item.backgroundColor };
+                opts.textDecoration = [item.strikethrough && 'line-through', item.underline && 'underline'].filter(Boolean).join(' ') || '';
+                if (item.bold) opts.fontWeight = 'bold';
+                if (item.italic) opts.fontStyle = 'italic';
+                const escapedSequence = item.tag.replace(/([()[{*+.$^\\|?])/g, '\\$1');
+                this.tags.push({
+                    tag: item.tag,
+                    escapedTag: escapedSequence.replace(/\//gi, "\\/"),
+                    ranges: [],
+                    decoration: vscode.window.createTextEditorDecorationType(opts)
+                });
+            }
         }
     }
 

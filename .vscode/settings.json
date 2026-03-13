@@ -1,14 +1,12 @@
 // Place your settings in this file to overwrite default and user settings.
 {
-    "files.exclude": {
-        "out": false, // 设为 true 可隐藏编译输出目录 "out"
-		"npm-debug.log": true
-    },
-    "search.exclude": {
-        "out": true // 设为 false 可在搜索结果中包含 "out" 目录
-	},
+  "files.exclude": {
+    "out": false, // 设为 true 可隐藏编译输出目录 "out"
+    "npm-debug.log": true
+  },
+  "search.exclude": {
+    "out": true // 设为 false 可在搜索结果中包含 "out" 目录
+  },
   "vsicons.presets.angular": false,
-  "cSpell.words": [
-    "rspack"
-  ]
+  "cSpell.words": ["rspack"]
 }

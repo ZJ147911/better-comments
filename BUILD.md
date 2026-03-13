@@ -24,10 +24,10 @@ pnpm install
 
 本扩展有两种运行环境，对应两套构建产物：
 
-| 运行环境 | 入口 | 开发构建 | 发布构建 | 说明 |
-|----------|------|----------|----------|------|
-| **桌面端（Node）** | `main: "./out/extension"` | `tsc` (compile) | esbuild (bundle-desktop) | 发布时单文件含依赖，无需 node_modules |
-| **Web / 远程** | `browser: "./out/web/extension.js"` | Rspack (compile-web) | Rspack (package-web) | VS Code for Web、Codespaces 等 |
+| 运行环境           | 入口                                | 开发构建             | 发布构建                 | 说明                                  |
+| ------------------ | ----------------------------------- | -------------------- | ------------------------ | ------------------------------------- |
+| **桌面端（Node）** | `main: "./out/extension"`           | `tsc` (compile)      | esbuild (bundle-desktop) | 发布时单文件含依赖，无需 node_modules |
+| **Web / 远程**     | `browser: "./out/web/extension.js"` | Rspack (compile-web) | Rspack (package-web)     | VS Code for Web、Codespaces 等        |
 
 ### 2.1 桌面端构建
 
@@ -66,16 +66,16 @@ npm run compile-web
 
 ## 三、npm 脚本说明
 
-| 脚本 | 用途 |
-|------|------|
-| `compile` | 桌面端 tsc 编译到 `out/`（开发用） |
-| `watch` | 桌面端监听并增量编译 |
-| `bundle-desktop` | 桌面端 esbuild 单文件打包到 `out/extension.js`（含 json5，发布用） |
-| `compile-web` | Web 端 Rspack 开发模式打包到 `out/web/` |
-| `watch-web` | Web 端监听并增量打包 |
-| `package-web` | Web 端 Rspack 生产打包 |
-| `vscode:prepublish` | 发布前自动执行：`bundle-desktop` + `package-web` |
-| `package:vsix` | 执行 prepublish 后执行 `vsce package --no-dependencies` 生成 .vsix（兼容 pnpm） |
+| 脚本                | 用途                                                                            |
+| ------------------- | ------------------------------------------------------------------------------- |
+| `compile`           | 桌面端 tsc 编译到 `out/`（开发用）                                              |
+| `watch`             | 桌面端监听并增量编译                                                            |
+| `bundle-desktop`    | 桌面端 esbuild 单文件打包到 `out/extension.js`（含 json5，发布用）              |
+| `compile-web`       | Web 端 Rspack 开发模式打包到 `out/web/`                                         |
+| `watch-web`         | Web 端监听并增量打包                                                            |
+| `package-web`       | Web 端 Rspack 生产打包                                                          |
+| `vscode:prepublish` | 发布前自动执行：`bundle-desktop` + `package-web`                                |
+| `package:vsix`      | 执行 prepublish 后执行 `vsce package --no-dependencies` 生成 .vsix（兼容 pnpm） |
 
 ---
 
@@ -84,10 +84,10 @@ npm run compile-web
 1. **只改 TypeScript（桌面端）**  
    终端执行：`npm run watch` 或 `pnpm run watch`，在 VS Code 中按 F5 使用「Extension」配置启动调试即可。
 
-2. **需要改 Web 端或同时改两端**  
-   - 桌面端：`npm run watch`  
+2. **需要改 Web 端或同时改两端**
+   - 桌面端：`npm run watch`
    - Web 端：`npm run watch-web`  
-   再按 F5 启动「Extension」即可（本地扩展宿主会用到 `out/` 与 `out/web/`）。
+     再按 F5 启动「Extension」即可（本地扩展宿主会用到 `out/` 与 `out/web/`）。
 
 3. **启动配置**  
    `.vscode/launch.json` 中的「Extension」会先执行 `preLaunchTask: "npm: watch"`（即 `npm run watch`），再启动扩展开发宿主。

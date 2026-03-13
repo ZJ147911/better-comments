@@ -17,6 +17,7 @@ function decodeUtf8(bytes: Uint8Array): string {
     return new (globalThis as { TextDecoder?: new () => { decode(b: Uint8Array): string } }).TextDecoder!().decode(bytes);
 }
 
+/** 解析带行注释与块注释的 JSON（JSONC），不依赖外部包 */
 function parseJsonc(text: string): unknown {
     let inStr = false;
     let escape = false;

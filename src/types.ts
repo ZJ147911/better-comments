@@ -13,7 +13,7 @@ import * as vscode from 'vscode';
 export interface CommentConfig {
     /** 行注释起始符，如 "//" 或 ["//", "#"]，无则仅支持块注释（如 HTML） */
     lineComment?: string | string[] | null;
-    /** 块注释 [起始, 结束]，如 ["/*", "*/"] 或 ["<!--", "-->"] */
+    /** 块注释 [起始, 结束]，如 C 风格或 HTML 风格 */
     blockComment?: [string, string] | null;
 }
 
@@ -43,9 +43,9 @@ export interface CommentFormat {
     blockCommentEnd: string;
     /** 是否高亮单行注释（如 //、#） */
     highlightSingleLine: boolean;
-    /** 是否高亮块注释（如 /* */、<!-- -->） */
+    /** 是否高亮块注释（C 风格或 HTML 风格） */
     highlightBlock: boolean;
-    /** 是否高亮 JSDoc 风格（/** * */） */
+    /** 是否高亮 JSDoc 风格 */
     highlightJSDoc: boolean;
     /** 是否忽略首行（如 shebang），避免误高亮 */
     ignoreFirstLine: boolean;

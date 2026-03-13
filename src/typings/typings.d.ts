@@ -1,4 +1,4 @@
-/** 全局类型补充（部分由 parser 内局部接口覆盖） */
+/** 全局类型补充（供未迁移代码或测试使用） */
 interface CommentTag {
     tag: string;
     escapedTag: string;

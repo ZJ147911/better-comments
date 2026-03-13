@@ -1,36 +1,47 @@
 /**
  * Better Comments 扩展入口
  * @file extension.ts
- * @description 激活时创建配置与解析器，订阅编辑器/文档/扩展变化，按语言更新注释高亮装饰
+ * @description 激活时创建输出通道、标签定义与高亮状态，订阅编辑器/文档/扩展变化，按语言更新注释高亮（无类，纯函数与模块）
  */
 
 import * as vscode from 'vscode';
-import { Configuration } from './configuration';
-import { Parser } from './parser';
+import { getCommentConfiguration, updateLanguageDefinitions } from './config';
+import { getTagDefs } from './tags';
+import {
+    buildHighlightState,
+    collectHighlightRanges,
+    applyDecorations,
+} from './highlight';
+import type { HighlightState } from './types';
 import { createOutputChannel } from './outputChannel';
 
 /** 文档内容变化后延迟执行高亮更新的毫秒数，避免频繁重算 */
 const DEBOUNCE_MS = 100;
 
 /**
- * 扩展激活时调用：初始化输出通道、配置与解析器，并注册各类事件订阅
+ * 扩展激活时调用：初始化输出通道、标签与语言配置，并注册各类事件订阅
  * @param context 扩展上下文，用于注册 subscriptions
  */
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const log = createOutputChannel(context);
 
+    /** 当前激活的编辑器 */
     let activeEditor: vscode.TextEditor | undefined;
-    const configuration = new Configuration(log);
-    const parser = new Parser(configuration, log);
+    /** 当前语言对应的高亮状态，切换编辑器时更新 */
+    let currentState: HighlightState | null = null;
+    /** 标签定义（含 decoration），激活时构建一次并注册 dispose */
+    const tagDefs = getTagDefs(log);
+    for (const t of tagDefs) {
+        context.subscriptions.push(t.decoration);
+    }
+
     let decorationTimeout: ReturnType<typeof setTimeout> | undefined;
 
-    /** 对当前激活编辑器执行单行/块/JSDoc 查找并应用装饰 */
+    /** 对当前激活编辑器按 currentState 收集区间并应用装饰 */
     function updateDecorations(): void {
-        if (!activeEditor || !parser.supportedLanguage) return;
-        parser.FindSingleLineComments(activeEditor);
-        parser.FindBlockComments(activeEditor);
-        parser.FindJSDocComments(activeEditor);
-        parser.ApplyDecorations(activeEditor);
+        if (!activeEditor || !currentState?.supported) return;
+        const rangesByTag = collectHighlightRanges(activeEditor, currentState);
+        applyDecorations(activeEditor, tagDefs, rangesByTag);
     }
 
     /** 防抖：在 DEBOUNCE_MS 后执行 updateDecorations */
@@ -42,13 +53,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }, DEBOUNCE_MS);
     }
 
-    /** 切换或打开编辑器时，按文档语言设置解析器并触发高亮 */
+    /** 切换或打开编辑器时，按文档语言构建高亮状态并触发一次高亮 */
     async function updateForEditor(editor: vscode.TextEditor | undefined): Promise<void> {
         if (!editor) return;
         activeEditor = editor;
         const languageId = editor.document.languageId;
-        await parser.SetRegex(languageId);
-        log.debug(`语言: ${languageId}，支持: ${parser.supportedLanguage ? '是' : '否'}`);
+        const commentConfig = await getCommentConfiguration(languageId, log);
+        const cfg = vscode.workspace.getConfiguration('better-comments');
+        const options = {
+            multilineComments: !!cfg.get<boolean>('multilineComments'),
+            highlightPlainText: !!cfg.get<boolean>('highlightPlainText'),
+        };
+        currentState = buildHighlightState(commentConfig, languageId, tagDefs, options);
+        log.debug(`语言: ${languageId}，支持: ${currentState.supported ? '是' : '否'}`);
         triggerUpdateDecorations();
     }
 
@@ -61,7 +78,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     context.subscriptions.push(
         vscode.extensions.onDidChange(() => {
             log.debug('扩展列表变化，重新加载语言配置');
-            configuration.UpdateLanguagesDefinitions();
+            updateLanguageDefinitions(log);
             if (activeEditor) updateForEditor(activeEditor);
         }),
         vscode.window.onDidChangeActiveTextEditor(editor => updateForEditor(editor)),
@@ -78,5 +95,5 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     );
 }
 
-/** 扩展停用时调用（当前无清理逻辑） */
+/** 扩展停用时调用（装饰已通过 context.subscriptions 自动释放） */
 export function deactivate(): void {}

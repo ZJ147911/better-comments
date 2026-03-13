@@ -1,8 +1,75 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 
-import * as json5 from 'json5';
-import { TextDecoder } from 'util';
+/** 将 Uint8Array 解码为 UTF-8 字符串，不依赖 util 包（Node 用 Buffer，Web 用全局 TextDecoder） */
+function decodeUtf8(bytes: Uint8Array): string {
+    if (typeof Buffer !== 'undefined') {
+        return Buffer.from(bytes).toString('utf-8');
+    }
+    return new (globalThis as { TextDecoder?: new () => { decode(b: Uint8Array): string } }).TextDecoder!().decode(bytes);
+}
+
+/** 解析带行注释与块注释的 JSON（JSONC），不依赖外部包 */
+function parseJsonc(text: string): unknown {
+    let inStr = false;
+    let escape = false;
+    let quote = '';
+    let i = 0;
+    const out: string[] = [];
+    const len = text.length;
+    while (i < len) {
+        const c = text[i];
+        if (escape) {
+            out.push(c);
+            escape = false;
+            i++;
+            continue;
+        }
+        if (inStr) {
+            if (c === '\\') {
+                escape = true;
+                out.push(c);
+                i++;
+                continue;
+            }
+            if (c === quote) {
+                inStr = false;
+                out.push(c);
+                i++;
+                continue;
+            }
+            out.push(c);
+            i++;
+            continue;
+        }
+        if (c === '"' || c === "'") {
+            inStr = true;
+            quote = c;
+            out.push(c);
+            i++;
+            continue;
+        }
+        if (c === '/' && i + 1 < len) {
+            const next = text[i + 1];
+            if (next === '/') {
+                i += 2;
+                while (i < len && text[i] !== '\n' && text[i] !== '\r') i++;
+                if (i < len) out.push(text[i]);
+                i++;
+                continue;
+            }
+            if (next === '*') {
+                i += 2;
+                while (i + 1 < len && !(text[i] === '*' && text[i + 1] === '/')) i++;
+                i += 2;
+                continue;
+            }
+        }
+        out.push(c);
+        i++;
+    }
+    return JSON.parse(out.join(''));
+}
 
 export class Configuration {
     private readonly commentConfig = new Map<string, CommentConfig | undefined>();
@@ -22,8 +89,15 @@ export class Configuration {
     public UpdateLanguagesDefinitions() {
         this.commentConfig.clear();
 
+        interface LangContribution {
+            id: string;
+            configuration?: string;
+        }
+        interface PkgContributes {
+            languages?: LangContribution[];
+        }
         for (const extension of vscode.extensions.all) {
-            const { contributes } = extension.packageJSON as { contributes?: { languages?: Array<{ id: string; configuration?: string }> } };
+            const contributes = (extension.packageJSON as { contributes?: PkgContributes }).contributes;
             if (!contributes?.languages) continue;
             for (const language of contributes.languages) {
                 if (language.configuration) {
@@ -60,8 +134,8 @@ export class Configuration {
         try {
             const filePath = this.languageConfigFiles.get(resolvedId)!;
             const rawContent = await vscode.workspace.fs.readFile(vscode.Uri.file(filePath));
-            const content = new TextDecoder().decode(rawContent);
-            const config = json5.parse(content) as { comments?: CommentConfig };
+            const content = decodeUtf8(rawContent);
+            const config = parseJsonc(content) as { comments?: CommentConfig };
 
             const comments = config.comments;
             this.commentConfig.set(languageCode, comments);

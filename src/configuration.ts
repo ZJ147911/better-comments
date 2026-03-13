@@ -1,7 +1,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 
-import * as json5 from 'json5'
+import * as json5 from 'json5';
 import { TextDecoder } from 'util';
 
 export class Configuration {

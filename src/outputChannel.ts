@@ -17,52 +17,56 @@ const LEVEL_ORDER: Record<LogLevel, number> = {
 };
 
 let logChannel: vscode.LogOutputChannel | undefined;
-/** 创建通道时传入的最低级别，优先于配置项 */
-let optionsMinLevel: LogLevel | undefined;
+/** 配置缓存，避免频繁读取 */
+let cachedConfig: { minLevel: LogLevel; filterKeyword: string } | null = null;
 
 /** 从 VS Code 配置读取输出筛选（完整键名 better-comments.output.*） */
 function getOutputConfig(): { minLevel: LogLevel; filterKeyword: string } {
+	if (cachedConfig) {
+		return cachedConfig;
+	}
 	const cfg = vscode.workspace.getConfiguration('better-comments');
 	const level = cfg.get<string>('output.minLevel', 'debug');
 	const keyword = (cfg.get<string>('output.filterKeyword') ?? '').trim();
-	return {
+	cachedConfig = {
 		minLevel:
 			LEVEL_ORDER[level as LogLevel] !== undefined
 				? (level as LogLevel)
 				: 'debug',
 		filterKeyword: keyword,
 	};
+	return cachedConfig;
 }
 
-/** 按级别与关键词筛选后写入 LogOutputChannel */
+/** 按级别与关键词筛选后写入 OutputChannel */
 function write(level: LogLevel, message: string): void {
-	const { minLevel: cfgMin, filterKeyword: kw } = getOutputConfig();
-	const effectiveMin = optionsMinLevel ?? cfgMin;
-	if (LEVEL_ORDER[level] < LEVEL_ORDER[effectiveMin]) return;
-	if (kw && !message.toLowerCase().includes(kw.toLowerCase())) return;
-	logChannel?.[level](message);
+	// 只保留关键词过滤
+	const { filterKeyword: kw } = getOutputConfig();
+	if (kw && !message.toLowerCase().includes(kw.toLowerCase())) {
+		return;
+	}
+
+	// 为不同级别添加前缀，确保 debug 日志能够被打印
+	const prefix = `[${level.toUpperCase()}]`;
+	logChannel?.appendLine(`${prefix} ${message}`);
 }
 
 /**
  * 创建并注册 Better Comments 日志通道（LogOutputChannel，级别与颜色由编辑器渲染）
  * @param context 扩展上下文，用于将 channel 加入 subscriptions
- * @param options.minLevel 可选，最低输出级别，未传则使用配置 better-comments.output.minLevel
- * @returns 带 debug/info/warn/error、appendLine、setMinLevel 的日志对象
+ * @returns 带 debug/info/warn/error、appendLine 的日志对象
  */
 export function createOutputChannel(
 	context: vscode.ExtensionContext,
-	options?: { minLevel?: LogLevel },
 ): {
 	debug: (message: string) => void;
 	info: (message: string) => void;
 	warn: (message: string) => void;
 	error: (message: string) => void;
 	appendLine: (text: string) => void;
-	setMinLevel: (level: LogLevel) => void;
 } {
 	logChannel = vscode.window.createOutputChannel(CHANNEL_NAME, { log: true });
 	context.subscriptions.push(logChannel);
-	optionsMinLevel = options?.minLevel;
 	return {
 		debug(msg) {
 			write('debug', msg);
@@ -79,16 +83,5 @@ export function createOutputChannel(
 		appendLine(text: string) {
 			logChannel?.appendLine(text);
 		},
-		setMinLevel(level: LogLevel) {
-			optionsMinLevel = level;
-		},
 	};
 }
-
-/** 空实现日志，注入后不输出任何内容 */
-export const noopLogger: Logger = {
-	debug() {},
-	info() {},
-	warn() {},
-	error() {},
-};

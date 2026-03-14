@@ -11,7 +11,12 @@ import {
 	buildHighlightState,
 	collectHighlightRanges,
 	applyDecorations,
+	collectHighlightRangesInRegions,
 } from './highlight';
+import {
+	isHybridLanguage,
+	getHybridLanguageConfigs,
+} from './hybridLanguages';
 import { createOutputChannel } from './outputChannel';
 import { getTagDefs } from './tags';
 
@@ -46,19 +51,77 @@ export async function activate(
 
 	let decorationTimeout: ReturnType<typeof setTimeout> | undefined;
 
+	/** 处理混合语言文件的高亮 */
+	async function handleHybridLanguage(
+		editor: vscode.TextEditor,
+	): Promise<boolean> {
+		const languageId = editor.document.languageId;
+
+		// 检查是否为混合语言文件
+		if (isHybridLanguage(languageId)) {
+			log.debug(`检测到混合语言：${languageId}，启用区域分析`);
+			const hybridConfig = getHybridLanguageConfigs().get(languageId)!;
+
+			if (hybridConfig.enabled) {
+				const text = editor.document.getText();
+				const regions = hybridConfig.extractRegions(
+					text,
+					hybridConfig.blockRegions,
+				);
+				log.debug(`提取到 ${regions.length} 个区域`);
+
+				if (regions.length > 0) {
+					const rangesByTag = await collectHighlightRangesInRegions(
+						editor,
+						regions,
+						tagDefs,
+						getHighlightOptions(),
+						log,
+					);
+					// 合并所有区域的标签定义，确保所有可能的标签都能被应用
+					const allTagDefs = new Map<string, TagDef>();
+					tagDefs.forEach((tagDef) => allTagDefs.set(tagDef.tag, tagDef));
+					// 为每个区域添加其语言特定的标签定义
+					for (const region of regions) {
+						const regionTagDefs = getTagDefs(log, region.languageId);
+						regionTagDefs.forEach((tagDef) =>
+							allTagDefs.set(tagDef.tag, tagDef),
+						);
+					}
+					applyDecorations(
+						editor,
+						Array.from(allTagDefs.values()),
+						rangesByTag,
+						log,
+					);
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
+
 	/** 对当前激活编辑器按 currentState 收集区间并应用装饰 */
-	function updateDecorations(): void {
-		if (!activeEditor || !currentState?.supported) return;
-		const rangesByTag = collectHighlightRanges(activeEditor, currentState);
-		applyDecorations(activeEditor, tagDefs, rangesByTag);
+	async function updateDecorations(): Promise<void> {
+		if (!activeEditor) return;
+
+		// 尝试处理混合语言文件
+		const handled = await handleHybridLanguage(activeEditor);
+		if (handled) return;
+
+		// 使用原有的单语言处理逻辑
+		if (!currentState?.supported) return;
+		const rangesByTag = collectHighlightRanges(activeEditor, currentState, log);
+		applyDecorations(activeEditor, tagDefs, rangesByTag, log);
 	}
 
 	/** 防抖：在 DEBOUNCE_MS 后执行 updateDecorations */
 	function triggerUpdateDecorations(): void {
 		if (decorationTimeout) clearTimeout(decorationTimeout);
-		decorationTimeout = setTimeout(() => {
+		decorationTimeout = setTimeout(async () => {
 			decorationTimeout = undefined;
-			updateDecorations();
+			await updateDecorations();
 		}, DEBOUNCE_MS);
 	}
 
@@ -67,7 +130,14 @@ export async function activate(
 		editor: vscode.TextEditor | undefined,
 	): Promise<void> {
 		if (!editor) return;
+
 		activeEditor = editor;
+
+		// 尝试处理混合语言文件
+		const handled = await handleHybridLanguage(editor);
+		if (handled) return;
+
+		// 使用原有的单语言处理逻辑
 		const languageId = editor.document.languageId;
 		const commentConfig = await getCommentConfiguration(languageId, log);
 		currentState = buildHighlightState(

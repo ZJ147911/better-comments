@@ -1,60 +1,21 @@
 <template>
-  <div id="el"></div>
+  <!-- ! 这是 HTML 警告注释，会高亮 -->
+  <!-- ? 这是问题注释 -->
+  <!-- TODO: 这是待办事项 -->
 </template>
 
 <script>
-Vue.component("select2", {
-  props: ["options", "value"],
-  template: "#select2-template",
-  mounted: function() {
-    var vm = this;
-    $(this.$el)
-      // ! init select2
-      .select2({ data: this.options })
-      .val(this.value)
-      .trigger("change")
-      // emit event on change.
-      .on("change", function() {
-        vm.$emit("input", this.value);
-      });
-  },
-  /*
-   ! non jsdoc comment
-   * highlighted
-   */
-  watch: {
-    value: function(value) {
-      // ? update value
-      $(this.$el)
-        .val(value)
-        .trigger("change");
-    },
-    options: function(options) {
-      // * update options
-      $(this.$el)
-        .empty()
-        .select2({ data: options });
-    }
-  },
+// ! JavaScript 行注释警告
+// ? JavaScript 问题注释
+// TODO: JavaScript 待办事项
 
-  /**
-   * This is a block comment
-   * ! some stuff
-   * TODO: a message
-   */  
-  destroyed: function() {
-    $(this.$el)
-      .off()
-      .select2("destroy");
-  }
-});
-
-var vm = new Vue({
-  el: "#el",
-  template: "#demo-template",
-  data: {
-    selected: 2,
-    options: [{ id: 1, text: "Hello" }, { id: 2, text: "World" }]
-  }
-});
+/*
+ * ! JavaScript 块注释
+ * ? 多行注释支持
+ */
 </script>
+
+<style>
+/* ! CSS 块注释警告 */
+/* ? CSS 问题注释 */
+</style>

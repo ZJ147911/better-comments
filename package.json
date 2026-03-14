@@ -200,6 +200,57 @@
           "type": "string",
           "default": "",
           "description": "输出面板关键词筛选，仅显示包含该关键词的日志（留空则不过滤）"
+        },
+        "better-comments.languageSpecificTags": {
+          "type": "object",
+          "description": "针对特定语言的标签配置，优先级高于全局标签配置",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "title": "tag item",
+              "properties": {
+                "tag": {
+                  "type": [
+                    "string",
+                    "array"
+                  ],
+                  "description": "标签名字符串或字符串数组，不区分大小写",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "color": {
+                  "type": "string",
+                  "description": "字体颜色，如：#FF2D00"
+                },
+                "strikethrough": {
+                  "type": "boolean",
+                  "description": "启用文本删除线（ strikethrough）"
+                },
+                "underline": {
+                  "type": "boolean",
+                  "description": "启用文本下划线"
+                },
+                "backgroundColor": {
+                  "type": "string",
+                  "description": "背景颜色，如：transparent（透明）"
+                },
+                "bold": {
+                  "type": "boolean",
+                  "description": "设置文本字体为粗体"
+                },
+                "italic": {
+                  "type": "boolean",
+                  "description": "设置文本字体为斜体"
+                },
+                "multiline": {
+                  "type": "boolean",
+                  "description": "启用多行注释装饰（直到空白行为止）"
+                }
+              }
+            }
+          }
         }
       }
     }

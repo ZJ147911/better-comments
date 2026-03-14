@@ -116,14 +116,30 @@ function decorationOptionsFromItem(
 
 /**
  * 从当前工作区配置读取 better-comments.tags，无效或空时返回默认标签项
+ * @param languageId 可选的语言ID，用于读取语言特定的标签配置
  * @returns 导出配置为 TagItemSingle[]（tag 均为单字符串）及是否来自默认配置
  * @remarks 不写日志，仅做读取与兜底
  */
-export function getTagItems(): {
+export function getTagItems(languageId?: string): {
 	items: TagItemSingle[];
 	fromDefault: boolean;
 } {
 	const cfg = vscode.workspace.getConfiguration('better-comments');
+
+	// 优先读取语言特定的标签配置
+	if (languageId) {
+		const languageSpecificTags = cfg.get<Record<string, TagItem[]>>(
+			'languageSpecificTags',
+		);
+		if (languageSpecificTags && languageSpecificTags[languageId]) {
+			const raw = languageSpecificTags[languageId];
+			if (Array.isArray(raw) && raw.length > 0) {
+				return { items: expandToSingleTagItems(raw), fromDefault: false };
+			}
+		}
+	}
+
+	// 回退到全局标签配置
 	const raw = cfg.get<TagItem[]>('tags');
 	if (Array.isArray(raw) && raw.length > 0) {
 		return { items: expandToSingleTagItems(raw), fromDefault: false };
@@ -165,10 +181,11 @@ function buildTagDefs(items: TagItemSingle[], log?: Logger): TagDef[] {
 /**
  * 一次性获取当前配置下的 TagDef 列表（便捷方法）
  * @param log 可选日志；若配置为空使用了默认标签会打一条 warn
+ * @param languageId 可选的语言ID，用于读取语言特定的标签配置
  * @returns 当前 better-comments.tags 对应的 TagDef 数组
  */
-export function getTagDefs(log?: Logger): TagDef[] {
-	const { items, fromDefault } = getTagItems();
+export function getTagDefs(log?: Logger, languageId?: string): TagDef[] {
+	const { items, fromDefault } = getTagItems(languageId);
 	const defs = buildTagDefs(items, log);
 	if (fromDefault && defs.length > 0)
 		log?.warn('未读取到 better-comments.tags 配置，已使用内置默认标签');

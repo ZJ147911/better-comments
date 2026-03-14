@@ -127,3 +127,48 @@ interface HighlightOptions {
 
 /** 按标签名聚合的区间列表，用于 applyDecorations */
 type RangesByTag = Map<string, import('vscode').Range[]>;
+
+// ---------------------------------------------------------------------------
+// 混合语言支持
+// ---------------------------------------------------------------------------
+
+/**
+ * 文档区域信息
+ */
+interface DocumentRegion {
+	/** 区域起始偏移 */
+	startOffset: number;
+	/** 区域结束偏移 */
+	endOffset: number;
+	/** 区域语言ID */
+	languageId: string;
+}
+
+/**
+ * 块区域定义
+ */
+interface BlockRegionDef {
+	/** 标签名 */
+	tagName: string;
+	/** 默认语言ID */
+	defaultLanguageId: string;
+	/** 语言属性映射 */
+	langAttributeMap?: Record<string, string>;
+}
+
+/**
+ * 混合语言配置
+ */
+interface HybridLanguageConfig {
+	/** 主语言ID */
+	mainLanguageId: string;
+	/** 是否启用 */
+	enabled: boolean;
+	/** 块区域定义 */
+	blockRegions: BlockRegionDef[];
+	/** 区域提取函数 */
+	extractRegions: (
+		text: string,
+		blockDefs: BlockRegionDef[],
+	) => DocumentRegion[];
+}

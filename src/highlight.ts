@@ -14,7 +14,7 @@ import { JSDOC_LANGUAGE_IDS, IGNORE_FIRST_LINE_LANGUAGE_IDS } from './config';
  * @returns 转义后字符串
  */
 function escapeRegExp(input: string): string {
-	return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+	return input.replace(/[.*+?^${}()|\[\]\\<>]/g, '\\$&');
 }
 
 /** 标签按长度降序排序，保证长标签优先匹配（如 todo 先于 to） */
@@ -22,7 +22,7 @@ function sortTagDefsByLengthDesc(tagDefs: TagDef[]): TagDef[] {
 	return [...tagDefs].sort((a, b) => b.tag.length - a.tag.length);
 }
 
-/** 标签在正则中的模式，按长度降序排序确保长标签优先匹配；纯单词标签加 \b 避免误匹配 */
+/** 标签在正则中的模式，按长度降序排序确保长标签优先匹配；纯单词标签加 \\b 避免误匹配 */
 function tagPatternForLine(tag: string, escapedTag: string): string {
 	return /^[\w]+$/.test(tag) ? '\\b' + escapedTag + '\\b' : escapedTag;
 }
@@ -77,7 +77,8 @@ export function resolveCommentFormat(
 		format.blockCommentStart = escapeRegExp(blockStart);
 		format.blockCommentEnd = escapeRegExp(blockEnd);
 		format.rawBlockCommentEnd = blockEnd;
-		format.highlightBlock = !!options.multilineComments;
+		// 对于只有块注释的语言（如HTML、vue-html），默认启用块注释高亮
+		format.highlightBlock = lineComment == null || !!options.multilineComments;
 	}
 
 	format.highlightJSDoc = JSDOC_LANGUAGE_IDS.has(languageCode);
@@ -185,7 +186,12 @@ function trimRightCr(line: string): string {
 function getBlockLineTagRegex(tagDefs: TagDef[]): RegExp {
 	const parts = getLineTagPatternParts(tagDefs);
 	if (parts.length === 0) return /(?!)/g;
-	return new RegExp('^([\\s]*)(' + parts.join('|') + ')([ ]*|[:])*(.*)$', 'gi');
+	// 允许标签前面有非空白字符，比如HTML注释中的"<!-- "
+	// 注意：使用 [^\w]? 而不是 [^\w]* 来避免贪婪匹配标签字符
+	return new RegExp(
+		'^([\s]*[^\w]?)?(' + parts.join('|') + ')([ ]*|[:])*(.*)$',
+		'gi',
+	);
 }
 
 /**
@@ -196,6 +202,7 @@ function getBlockLineTagRegex(tagDefs: TagDef[]): RegExp {
  * @param lineTagRegex 行内标签正则（含 g），每行匹配前需 lastIndex=0
  * @param tagDefs 标签定义，用于按匹配到的 tagKey 查 TagDef
  * @param rangesByTag 可变 Map，将把新区间按标签合并进去
+ * @param log 日志输出对象
  */
 function matchBlockContentLines(
 	editor: vscode.TextEditor,
@@ -204,12 +211,18 @@ function matchBlockContentLines(
 	lineTagRegex: RegExp,
 	tagDefs: TagDef[],
 	rangesByTag: RangesByTag,
+	log: Logger,
 ): void {
 	const lines = splitLinesWithOffsets(content);
+
 	for (const { line, startOffset } of lines) {
 		lineTagRegex.lastIndex = 0;
-		const lineMatch = lineTagRegex.exec(trimRightCr(line));
+		const trimmedLine = trimRightCr(line);
+
+		const lineMatch = lineTagRegex.exec(trimmedLine);
 		if (!lineMatch) continue;
+
+		// 计算前缀长度，包括可能的非空白字符（如 HTML 注释中的"<!-- "）
 		const prefixLen = lineMatch[1]?.length ?? 0;
 		const tagKey = (lineMatch[2] as string).toLowerCase();
 		const tagDef = findTagByKey(tagDefs, tagKey);
@@ -228,8 +241,8 @@ function matchBlockContentLines(
 	}
 }
 
-/** JSDoc 块正则：/** ... *\/ ；(^|\\s) 使 /** 前可为换行或空白，与 HTML 块注释一致 */
-const JSDOC_BLOCK_REGEX = /(^|\s)(\/\*\*)+([\s\S]*?)(\*\/)/gm;
+/** JSDoc 块正则：移除 (^|\s) 限制，使 /** 前可为任意字符 */
+const JSDOC_BLOCK_REGEX = /(\/\*\*)+([\s\S]*?)(\*\/)/gm;
 
 /** JSDoc 单行匹配：行首空白 + 可选的 * + 标签 + 可选空格/冒号 + 剩余内容；* 可选；i、g */
 function getJSDocLineTagRegex(tagDefs: TagDef[]): RegExp {
@@ -242,16 +255,66 @@ function getJSDocLineTagRegex(tagDefs: TagDef[]): RegExp {
 }
 
 /**
+ * 计算区域内的绝对位置
+ */
+function getAbsolutePosition(offset: number, region?: DocumentRegion): number {
+	return region ? region.startOffset + offset : offset;
+}
+
+/**
+ * 处理块注释内容
+ */
+function processBlockContent(
+	editor: vscode.TextEditor,
+	text: string,
+	regex: RegExp,
+	lineTagRegex: RegExp,
+	tagDefs: TagDef[],
+	rangesByTag: RangesByTag,
+	log: Logger,
+	region?: DocumentRegion,
+): void {
+	let match: RegExpExecArray | null;
+	while ((match = regex.exec(text)) !== null) {
+		const content = match[2] as string;
+		const contentStartInDoc = match.index + (match[1]?.length ?? 0);
+		const absoluteContentStartInDoc = getAbsolutePosition(
+			contentStartInDoc,
+			region,
+		);
+
+		matchBlockContentLines(
+			editor,
+			content,
+			absoluteContentStartInDoc,
+			lineTagRegex,
+			tagDefs,
+			rangesByTag,
+			log,
+		);
+	}
+}
+
+/**
  * 单次收集：单行注释、块注释、JSDoc 三种区间合并写入 rangesByTag（合并原三个查找方法）
  */
 function findAllRanges(
 	editor: vscode.TextEditor,
 	state: HighlightState,
 	rangesByTag: RangesByTag,
+	log: Logger,
+	region?: DocumentRegion,
 ): void {
 	if (!state.supported) return;
 
-	const text = editor.document.getText();
+	const text = region
+		? editor.document.getText(
+				new vscode.Range(
+					editor.document.positionAt(region.startOffset),
+					editor.document.positionAt(region.endOffset),
+				),
+			)
+		: editor.document.getText();
 	const { tagDefs, format } = state;
 
 	// 1) 单行注释
@@ -261,7 +324,8 @@ function findAllRanges(
 		while ((match = re.exec(text)) !== null) {
 			const contentStart =
 				match.index + (match[1]?.length ?? 0) + (match[2]?.length ?? 0);
-			const startPos = editor.document.positionAt(contentStart);
+			const absoluteContentStart = getAbsolutePosition(contentStart, region);
+			const startPos = editor.document.positionAt(absoluteContentStart);
 			if (
 				format.ignoreFirstLine &&
 				startPos.line === 0 &&
@@ -269,7 +333,8 @@ function findAllRanges(
 			)
 				continue;
 			const contentEnd = match.index + match[0].length;
-			const endPos = editor.document.positionAt(contentEnd);
+			const absoluteContentEnd = getAbsolutePosition(contentEnd, region);
+			const endPos = editor.document.positionAt(absoluteContentEnd);
 			const tagKey = (match[3] as string).toLowerCase();
 			const tagDef = findTagByKey(tagDefs, tagKey);
 			if (tagDef) {
@@ -284,47 +349,38 @@ function findAllRanges(
 	if (format.highlightBlock) {
 		const { blockCommentStart, blockCommentEnd } = format;
 		const regEx = new RegExp(
-			'(^|\\s)(' +
-				blockCommentStart +
-				'[\\s]*)([\\s\\S]*?)(' +
-				blockCommentEnd +
-				')',
+			'(' + blockCommentStart + '[\\s]*)([\\s\\S]*?)(' + blockCommentEnd + ')',
 			'gm',
 		);
+		log.debug(`🔍 块注释正则：${regEx}`);
+		log.debug(`🔍 查找块注释，文本长度：${text.length}`);
+
 		const lineTagRegex = getBlockLineTagRegex(tagDefs);
-		let match: RegExpExecArray | null;
-		while ((match = regEx.exec(text)) !== null) {
-			const content = match[3] as string;
-			const contentStartInDoc =
-				match.index + (match[1]?.length ?? 0) + (match[2]?.length ?? 0);
-			matchBlockContentLines(
-				editor,
-				content,
-				contentStartInDoc,
-				lineTagRegex,
-				tagDefs,
-				rangesByTag,
-			);
-		}
+		processBlockContent(
+			editor,
+			text,
+			regEx,
+			lineTagRegex,
+			tagDefs,
+			rangesByTag,
+			log,
+			region,
+		);
 	}
 
 	// 3) JSDoc 块（/** ... */）
 	if (format.highlightBlock || format.highlightJSDoc) {
-		let match: RegExpExecArray | null;
-		while ((match = JSDOC_BLOCK_REGEX.exec(text)) !== null) {
-			const content = match[3] as string;
-			const contentStartInDoc =
-				match.index + (match[1]?.length ?? 0) + (match[2]?.length ?? 0);
-			const lineTagRegex = getJSDocLineTagRegex(tagDefs);
-			matchBlockContentLines(
-				editor,
-				content,
-				contentStartInDoc,
-				lineTagRegex,
-				tagDefs,
-				rangesByTag,
-			);
-		}
+		const lineTagRegex = getJSDocLineTagRegex(tagDefs);
+		processBlockContent(
+			editor,
+			text,
+			JSDOC_BLOCK_REGEX,
+			lineTagRegex,
+			tagDefs,
+			rangesByTag,
+			log,
+			region,
+		);
 	}
 }
 
@@ -332,14 +388,16 @@ function findAllRanges(
  * 对当前编辑器执行单行、块、JSDoc 三种查找并合并到同一 RangesByTag
  * @param editor 当前编辑器
  * @param state 高亮状态（须已由 buildHighlightState 构建）
+ * @param log 日志输出对象
  * @returns 按标签聚合的区间 Map，可直接传给 applyDecorations
  */
 export function collectHighlightRanges(
 	editor: vscode.TextEditor,
 	state: HighlightState,
+	log: Logger,
 ): RangesByTag {
 	const rangesByTag: RangesByTag = new Map();
-	findAllRanges(editor, state, rangesByTag);
+	findAllRanges(editor, state, rangesByTag, log);
 	return rangesByTag;
 }
 
@@ -348,15 +406,87 @@ export function collectHighlightRanges(
  * @param editor 当前编辑器
  * @param tagDefs 标签定义（含 decoration）
  * @param rangesByTag 各标签对应的区间列表
+ * @param log 日志输出对象
  * @remarks 未在 rangesByTag 中出现的标签会应用空数组，以清除旧装饰
  */
 export function applyDecorations(
 	editor: vscode.TextEditor,
 	tagDefs: TagDef[],
 	rangesByTag: RangesByTag,
+	log: Logger,
 ): void {
 	for (const tagDef of tagDefs) {
 		const ranges = rangesByTag.get(tagDef.tag) ?? [];
 		editor.setDecorations(tagDef.decoration, ranges);
 	}
+}
+
+// 混合语言文件支持（区域级别高亮）
+
+/**
+ * 为特定区域收集高亮区间
+ */
+export async function collectHighlightRangesForRegion(
+	editor: vscode.TextEditor,
+	region: DocumentRegion,
+	tagDefs: TagDef[],
+	options: HighlightOptions = {},
+	log: Logger,
+): Promise<RangesByTag> {
+	const { getCommentConfiguration } = await import('./config');
+	const { getTagDefs } = await import('./tags');
+
+	// 获取该语言特定的标签定义
+	const regionTagDefs = getTagDefs(log, region.languageId);
+
+	const commentConfig = await getCommentConfiguration(region.languageId, log);
+
+	const state = buildHighlightState(
+		commentConfig,
+		region.languageId,
+		regionTagDefs,
+		options,
+	);
+
+	if (!state.supported) {
+		return new Map();
+	}
+
+	const rangesByTag: RangesByTag = new Map();
+
+	// 使用 findAllRanges 函数处理该区域的注释
+	findAllRanges(editor, state, rangesByTag, log, region);
+
+	return rangesByTag;
+}
+
+/**
+ * 在多个区域中收集高亮区间并合并
+ */
+export async function collectHighlightRangesInRegions(
+	editor: vscode.TextEditor,
+	regions: DocumentRegion[],
+	tagDefs: TagDef[],
+	options: HighlightOptions = {},
+	log: Logger,
+): Promise<RangesByTag> {
+	const allRanges: RangesByTag = new Map();
+
+	await Promise.all(
+		regions.map(async (region) => {
+			const regionRanges = await collectHighlightRangesForRegion(
+				editor,
+				region,
+				tagDefs,
+				options,
+				log,
+			);
+			for (const [tag, ranges] of regionRanges.entries()) {
+				const existing = allRanges.get(tag) ?? [];
+				allRanges.set(tag, [...existing, ...ranges]);
+			}
+		}),
+	);
+
+	return allRanges;
 }

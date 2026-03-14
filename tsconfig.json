@@ -15,5 +15,5 @@
     "rootDir": "src",
     "noUnusedLocals": true /* 对未使用的局部变量报错 */
   },
-  "exclude": ["src/test*", "node_modules", ".vscode-test"]
+  "exclude": ["src/test*", "test", "node_modules", ".vscode-test"]
 }

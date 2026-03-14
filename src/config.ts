@@ -87,7 +87,6 @@ let languageConfigFiles = new Map<string, string>();
 /** 无独立 language 配置时回退的语言 ID（注释风格对齐到已知语言） */
 const COMMENT_CONFIG_FALLBACKS: Readonly<Record<string, string>> = {
 	vue: 'javascript',
-	'vue-html': 'javascript',
 	svelte: 'javascript',
 };
 
@@ -125,6 +124,7 @@ const BUILDIN_COMMENT_CONFIGS: Readonly<Record<string, CommentConfig>> = {
 	html: { blockComment: ['<!--', '-->'] },
 	htm: { blockComment: ['<!--', '-->'] },
 	xml: { blockComment: ['<!--', '-->'] },
+	'vue-html': { blockComment: ['<!--', '-->'] },
 	css: { blockComment: ['/*', '*/'] },
 
 	// C 风格：// + /* */

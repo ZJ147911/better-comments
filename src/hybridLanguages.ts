@@ -16,11 +16,10 @@ export function extractBlockRegions(
 ): DocumentRegion[] {
 	const regions: DocumentRegion[] = [];
 	const tagNames = blockDefs.map((def) => def.tagName).join('|');
-	// 添加 i 标志使正则不区分大小写
-	const blockRegex = new RegExp(
-		`<(${tagNames})([^>]*)>([\\s\\S]*?)<\\/\\1>|<(${tagNames})([^>]*)\\s*\\/>`,
-		'gi',
-	);
+	
+	// 构建正则表达式
+	const pattern = `<(${tagNames})([^>]*)>([\\s\\S]*?)<\\/\\1>|<(${tagNames})([^>]*)\\s*\\/>`;
+	const blockRegex = new RegExp(pattern, 'gi');
 
 	let match: RegExpExecArray | null;
 	while ((match = blockRegex.exec(text)) !== null) {
@@ -32,10 +31,11 @@ export function extractBlockRegions(
 		if (attrs.trimEnd().endsWith('/')) continue;
 
 		const openTagEnd = text.indexOf('>', tagStart) + 1;
-		const closeTagStart = text.lastIndexOf(
-			`</${tagName}`,
-			tagStart + match[0].length,
-		);
+		
+		// 从开标签结束位置向后查找闭合标签（避免 lastIndexOf 的陷阱）
+		const closeTagStart = text.indexOf(`</${tagName}`, openTagEnd);
+		
+		if (closeTagStart === -1) continue;
 
 		const blockDef = blockDefs.find((def) => def.tagName === tagName);
 		if (!blockDef) continue;

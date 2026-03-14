@@ -15,7 +15,7 @@ import {
 } from './highlight';
 import {
 	isHybridLanguage,
-	getHybridLanguageConfigs,
+	getHybridConfigForLanguage,
 } from './hybridLanguages';
 import { createOutputChannel } from './outputChannel';
 import { getTagDefs } from './tags';
@@ -60,7 +60,7 @@ export async function activate(
 		// 检查是否为混合语言文件
 		if (isHybridLanguage(languageId)) {
 			log.debug(`检测到混合语言：${languageId}，启用区域分析`);
-			const hybridConfig = getHybridLanguageConfigs().get(languageId)!;
+			const hybridConfig = getHybridConfigForLanguage(languageId)!;
 
 			if (hybridConfig.enabled) {
 				const text = editor.document.getText();

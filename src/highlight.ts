@@ -182,14 +182,17 @@ function trimRightCr(line: string): string {
 	return line.endsWith('\r') ? line.slice(0, -1) : line;
 }
 
-/** 块注释内单行匹配：行首空白 + 标签 + 可选空格/冒号 + 剩余内容；i、g */
+/** 块注释内单行匹配：行首空白 + 可选的 * + 标签 + 可选空格/冒号 + 剩余内容；i、g */
 function getBlockLineTagRegex(tagDefs: TagDef[]): RegExp {
 	const parts = getLineTagPatternParts(tagDefs);
 	if (parts.length === 0) return /(?!)/g;
-	// 允许标签前面有非空白字符，比如HTML注释中的"<!-- "
+	// 允许标签前面有：
+	// 1. 任意空白字符（[\s]*）
+	// 2. 可选的 * 及其后的空格（JSDoc 风格）
+	// 3. 可选的非单词字符（如 HTML 注释中的 <!--）
 	// 注意：使用 [^\w]? 而不是 [^\w]* 来避免贪婪匹配标签字符
 	return new RegExp(
-		'^([\s]*[^\w]?)?(' + parts.join('|') + ')([ ]*|[:])*(.*)$',
+		'^([\\s]*(\\*[ \\t]*)?[^\\w]?)?(' + parts.join('|') + ')([ ]*|[:])*(.*)$',
 		'gi',
 	);
 }
@@ -223,10 +226,13 @@ function matchBlockContentLines(
 		if (!lineMatch) continue;
 
 		// 计算前缀长度，包括可能的非空白字符（如 HTML 注释中的"<!-- "）
+		// 正则捕获组：[1] 整个前缀 [2] 可选的*部分 [3] 标签 [4] 空格/冒号 [5] 剩余内容
 		const prefixLen = lineMatch[1]?.length ?? 0;
-		const tagKey = (lineMatch[2] as string).toLowerCase();
+		const tagKey = (lineMatch[3] as string).toLowerCase();
+		
 		const tagDef = findTagByKey(tagDefs, tagKey);
 		if (!tagDef) continue;
+		
 		const lineStartInDoc = contentStartInDoc + startOffset;
 		const contentStartOffset = lineStartInDoc + prefixLen;
 		const contentEndOffset = lineStartInDoc + line.length;
@@ -248,6 +254,7 @@ const JSDOC_BLOCK_REGEX = /(\/\*\*)+([\s\S]*?)(\*\/)/gm;
 function getJSDocLineTagRegex(tagDefs: TagDef[]): RegExp {
 	const parts = getLineTagPatternParts(tagDefs);
 	if (parts.length === 0) return /(?!)/g;
+	// 正则捕获组：[1] 前缀（空白+ 可选的*+ 空白） [2] 标签 [3] 空格/冒号 [4] 剩余内容
 	return new RegExp(
 		'^([\\s]*\\*?[\\s]*)(' + parts.join('|') + ')([ ]*|[:])*(.*)$',
 		'gi',

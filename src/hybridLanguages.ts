@@ -5,7 +5,7 @@
  */
 
 /**
- * 通用的块级区域提取函数
+ * 通用的块级区域提取函数（支持 Vue、Svelte 等）
  * @param text 文档完整文本
  * @param blockDefs 块区域定义列表
  * @returns 区域列表，按在文档中的位置排序

@@ -68,7 +68,10 @@ export async function activate(
 					text,
 					hybridConfig.blockRegions,
 				);
-				log.debug(`提取到 ${regions.length} 个区域`);
+				log.debug(`[handleHybridLanguage] ✅ 提取到 ${regions.length} 个区域`);
+				regions.forEach((region, index) => {
+					log.debug(`[handleHybridLanguage]   区域 ${index + 1}: ${region.languageId} (${region.startOffset}-${region.endOffset})`);
+				});
 
 				if (regions.length > 0) {
 					const rangesByTag = await collectHighlightRangesInRegions(
@@ -88,6 +91,7 @@ export async function activate(
 							allTagDefs.set(tagDef.tag, tagDef),
 						);
 					}
+					log.debug(`[handleHybridLanguage] 应用装饰，共 ${Array.from(allTagDefs.values()).length} 个标签定义`);
 					applyDecorations(
 						editor,
 						Array.from(allTagDefs.values()),
@@ -106,18 +110,53 @@ export async function activate(
 	async function updateDecorations(): Promise<void> {
 		if (!activeEditor) return;
 
+		log.debug('[updateDecorations] 开始更新装饰');
+
 		// 尝试处理混合语言文件
 		const handled = await handleHybridLanguage(activeEditor);
-		if (handled) return;
+		if (handled) {
+			log.debug('[updateDecorations] ✅ 已处理混合语言文件');
+			return;
+		}
 
 		// 使用原有的单语言处理逻辑
-		if (!currentState?.supported) return;
+		if (!currentState?.supported) {
+			log.debug('[updateDecorations] ⚠️ 当前语言不支持注释高亮');
+			return;
+		}
+
+		log.debug(`[updateDecorations] 处理单语言文件：${activeEditor.document.languageId}`);
 		const rangesByTag = collectHighlightRanges(activeEditor, currentState, log);
 		applyDecorations(activeEditor, tagDefs, rangesByTag, log);
+		log.debug('[updateDecorations] ✅ 装饰更新完成');
 	}
 
 	/** 防抖：在 DEBOUNCE_MS 后执行 updateDecorations */
 	function triggerUpdateDecorations(): void {
+		// 只在当前激活编辑器是文本编辑器且有焦点时才更新
+		if (!activeEditor || !vscode.window.activeTextEditor) {
+			return;
+		}
+
+		// 检查是否是同一个编辑器（确保焦点在当前编辑区）
+		if (activeEditor !== vscode.window.activeTextEditor) {
+			return;
+		}
+
+		// 检查编辑器是否可见（不在后台或被其他视图覆盖）
+		const visibleEditors = vscode.window.visibleTextEditors;
+		if (!visibleEditors.includes(activeEditor)) {
+			return;
+		}
+
+		// 检查当前焦点是否在编辑器中（通过 selection 判断）
+		// 如果焦点在终端、输入框等其他地方，selections 会是空的或者不变化
+		const currentSelection = activeEditor.selection;
+		if (currentSelection.isEmpty && activeEditor.document.getText().length === 0) {
+			// 空文档且无选区，可能是焦点不在编辑器
+			// 但为了兼容性，我们还是允许更新
+		}
+
 		if (decorationTimeout) clearTimeout(decorationTimeout);
 		decorationTimeout = setTimeout(async () => {
 			decorationTimeout = undefined;
@@ -152,6 +191,11 @@ export async function activate(
 		triggerUpdateDecorations();
 	}
 
+	// 记录最后一次编辑器交互的时间
+	let lastEditorInteraction = Date.now();
+	// 标记当前焦点是否在编辑器中
+	let isEditorFocused = false;
+
 	log.info('Better Comments 已激活');
 
 	if (vscode.window.activeTextEditor) {
@@ -164,18 +208,54 @@ export async function activate(
 			updateLanguageDefinitions(log);
 			if (activeEditor) updateForEditor(activeEditor);
 		}),
-		vscode.window.onDidChangeActiveTextEditor((editor) =>
-			updateForEditor(editor),
-		),
+		vscode.window.onDidChangeActiveTextEditor((editor) => {
+			// 当激活编辑器变化时，更新焦点状态
+			isEditorFocused = !!editor;
+			updateForEditor(editor);
+		}),
 		vscode.workspace.onDidOpenTextDocument((doc) => {
 			if (vscode.window.activeTextEditor?.document === doc) {
 				updateForEditor(vscode.window.activeTextEditor);
 			}
 		}),
-		vscode.workspace.onDidChangeTextDocument((event) => {
-			if (activeEditor && event.document === activeEditor.document) {
-				triggerUpdateDecorations();
+		vscode.window.onDidChangeTextEditorSelection((event) => {
+			// 记录用户在编辑器中的交互，并标记焦点在编辑器
+			if (event.textEditor === activeEditor) {
+				lastEditorInteraction = Date.now();
+				isEditorFocused = true;
 			}
+		}),
+		vscode.window.onDidChangeVisibleTextEditors((editors) => {
+			// 当可见编辑器变化时，检查当前编辑器是否仍然可见
+			isEditorFocused = activeEditor ? editors.includes(activeEditor) : false;
+		}),
+		vscode.window.onDidChangeTextEditorViewColumn((event) => {
+			// 当编辑器视图列变化时（如拖拽移动），更新焦点状态
+			if (event.textEditor === activeEditor) {
+				const visibleEditors = vscode.window.visibleTextEditors;
+				isEditorFocused = visibleEditors.includes(activeEditor);
+			}
+		}),
+		vscode.workspace.onDidChangeTextDocument((event) => {
+			if (!activeEditor || event.document !== activeEditor.document) {
+				return;
+			}
+
+			// 严格检查：焦点必须在编辑器中
+			if (!isEditorFocused) {
+				// log.debug('[onDidChangeTextDocument] ⚠️ 焦点不在编辑器，忽略文档变化');
+				return;
+			}
+
+			// 检查是否在最近 50ms 内有编辑器交互（缩短时间窗口）
+			const now = Date.now();
+			if (now - lastEditorInteraction > 50) {
+				// 可能是外部工具修改了文档，不是用户直接输入
+				// log.debug('[onDidChangeTextDocument] ⚠️ 忽略非用户直接输入的文档变化');
+				return;
+			}
+
+			triggerUpdateDecorations();
 		}),
 	);
 }

@@ -217,6 +217,7 @@ function matchBlockContentLines(
 	log: Logger,
 ): void {
 	const lines = splitLinesWithOffsets(content);
+	let matchedCount = 0;
 
 	for (const { line, startOffset } of lines) {
 		lineTagRegex.lastIndex = 0;
@@ -231,7 +232,11 @@ function matchBlockContentLines(
 		const tagKey = (lineMatch[3] as string).toLowerCase();
 		
 		const tagDef = findTagByKey(tagDefs, tagKey);
-		if (!tagDef) continue;
+		if (!tagDef) {
+			continue;
+		}
+		
+		matchedCount++;
 		
 		const lineStartInDoc = contentStartInDoc + startOffset;
 		const contentStartOffset = lineStartInDoc + prefixLen;
@@ -244,6 +249,10 @@ function matchBlockContentLines(
 			),
 		);
 		rangesByTag.set(tagDef.tag, list);
+	}
+	
+	if (matchedCount > 0) {
+		log.debug(`[matchBlockContentLines] ✅ 成功匹配 ${matchedCount} 行`);
 	}
 }
 
@@ -270,6 +279,7 @@ function getAbsolutePosition(offset: number, region?: DocumentRegion): number {
 
 /**
  * 处理块注释内容
+ * @param type 类型标识（'块注释' 或 'JSDoc'）
  */
 function processBlockContent(
 	editor: vscode.TextEditor,
@@ -280,15 +290,23 @@ function processBlockContent(
 	rangesByTag: RangesByTag,
 	log: Logger,
 	region?: DocumentRegion,
+	type: string = '块注释',
 ): void {
+	let blockCount = 0;
+	let lineCount = 0;
 	let match: RegExpExecArray | null;
 	while ((match = regex.exec(text)) !== null) {
+		blockCount++;
 		const content = match[2] as string;
 		const contentStartInDoc = match.index + (match[1]?.length ?? 0);
 		const absoluteContentStartInDoc = getAbsolutePosition(
 			contentStartInDoc,
 			region,
 		);
+
+		// 统计当前块中的行数
+		const linesInBlock = content.split('\n').filter(line => line.trim().length > 0).length;
+		lineCount += linesInBlock;
 
 		matchBlockContentLines(
 			editor,
@@ -299,6 +317,10 @@ function processBlockContent(
 			rangesByTag,
 			log,
 		);
+	}
+	
+	if (blockCount > 0) {
+		log.debug(`[${type}] ✅ 处理 ${blockCount} 个${type === 'JSDoc' ? 'JSDoc' : '块'}注释（共 ${lineCount} 行）`);
 	}
 }
 
@@ -312,7 +334,10 @@ function findAllRanges(
 	log: Logger,
 	region?: DocumentRegion,
 ): void {
-	if (!state.supported) return;
+	if (!state.supported) {
+		log.debug('[findAllRanges] ⚠️ 当前语言不支持注释高亮');
+		return;
+	}
 
 	const text = region
 		? editor.document.getText(
@@ -324,11 +349,15 @@ function findAllRanges(
 		: editor.document.getText();
 	const { tagDefs, format } = state;
 
+	log.debug(`[findAllRanges] 处理区域文本 (${format.highlightSingleLine ? '单行' : '无单行'}, ${format.highlightBlock ? '块注释' : '无块'}, ${format.highlightJSDoc ? 'JSDoc' : '无 JSDoc'})`);
+
 	// 1) 单行注释
 	if (format.highlightSingleLine && state.singleLineRegex) {
 		const re = state.singleLineRegex;
+		let matchCount = 0;
 		let match: RegExpExecArray | null;
 		while ((match = re.exec(text)) !== null) {
+			matchCount++;
 			const contentStart =
 				match.index + (match[1]?.length ?? 0) + (match[2]?.length ?? 0);
 			const absoluteContentStart = getAbsolutePosition(contentStart, region);
@@ -350,6 +379,9 @@ function findAllRanges(
 				rangesByTag.set(tagDef.tag, list);
 			}
 		}
+		if (matchCount > 0) {
+			log.debug(`[findAllRanges] ✅ 单行注释：${matchCount} 个`);
+		}
 	}
 
 	// 2) 块注释（语言配置的 blockComment）
@@ -359,9 +391,6 @@ function findAllRanges(
 			'(' + blockCommentStart + '[\\s]*)([\\s\\S]*?)(' + blockCommentEnd + ')',
 			'gm',
 		);
-		log.debug(`🔍 块注释正则：${regEx}`);
-		log.debug(`🔍 查找块注释，文本长度：${text.length}`);
-
 		const lineTagRegex = getBlockLineTagRegex(tagDefs);
 		processBlockContent(
 			editor,
@@ -372,11 +401,12 @@ function findAllRanges(
 			rangesByTag,
 			log,
 			region,
+			'块注释',
 		);
 	}
 
-	// 3) JSDoc 块（/** ... */）
-	if (format.highlightBlock || format.highlightJSDoc) {
+	// 3) JSDoc（仅当语言支持且启用多行注释时）
+	if (format.highlightJSDoc && format.highlightBlock) {
 		const lineTagRegex = getJSDocLineTagRegex(tagDefs);
 		processBlockContent(
 			editor,
@@ -387,6 +417,7 @@ function findAllRanges(
 			rangesByTag,
 			log,
 			region,
+			'JSDoc',
 		);
 	}
 }
@@ -477,23 +508,24 @@ export async function collectHighlightRangesInRegions(
 	options: HighlightOptions = {},
 	log: Logger,
 ): Promise<RangesByTag> {
-	const allRanges: RangesByTag = new Map();
+	const allRangesByTag: RangesByTag = new Map();
 
-	await Promise.all(
-		regions.map(async (region) => {
-			const regionRanges = await collectHighlightRangesForRegion(
-				editor,
-				region,
-				tagDefs,
-				options,
-				log,
-			);
-			for (const [tag, ranges] of regionRanges.entries()) {
-				const existing = allRanges.get(tag) ?? [];
-				allRanges.set(tag, [...existing, ...ranges]);
-			}
-		}),
-	);
+	for (const region of regions) {
+		const regionRanges = await collectHighlightRangesForRegion(
+			editor,
+			region,
+			tagDefs,
+			options,
+			log,
+		);
 
-	return allRanges;
+		// 合并结果
+		for (const [tag, ranges] of regionRanges) {
+			const existing = allRangesByTag.get(tag) ?? [];
+			allRangesByTag.set(tag, existing.concat(ranges));
+		}
+	}
+
+	return allRangesByTag;
 }
+

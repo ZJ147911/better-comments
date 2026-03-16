@@ -81,17 +81,9 @@ function write(level: LogLevel, message: string): void {
 /**
  * 创建并注册 Better Comments 日志通道（LogOutputChannel，级别与颜色由编辑器渲染）
  * @param context 扩展上下文，用于将 channel 加入 subscriptions
- * @returns 带 debug/info/warn/error、appendLine 的日志对象
+ * @returns 符合 Logger 接口的日志对象（含 appendLine）
  */
-export function createOutputChannel(
-	context: vscode.ExtensionContext,
-): {
-	debug: (message: string) => void;
-	info: (message: string) => void;
-	warn: (message: string) => void;
-	error: (message: string) => void;
-	appendLine: (text: string) => void;
-} {
+export function createOutputChannel(context: vscode.ExtensionContext): Logger {
 	logChannel = vscode.window.createOutputChannel(CHANNEL_NAME, { log: true });
 	context.subscriptions.push(logChannel);
 

@@ -26,6 +26,22 @@ import { createOutputChannel } from './outputChannel';
 import { getTagDefs } from './tags';
 
 const DEBOUNCE_MS = 100;
+/** 合并全局 tagDefs 与各区域语言专属 tagDefs，去重后返回数组（用于混合语言 applyDecorations） */
+function mergeTagDefsForRegions(
+	baseTagDefs: TagDef[],
+	regions: DocumentRegion[],
+	log: Logger,
+): TagDef[] {
+	const byTag = new Map<string, TagDef>();
+	for (const t of baseTagDefs) byTag.set(t.tag, t);
+	for (const region of regions) {
+		for (const t of getTagDefs(log, region.languageId)) byTag.set(t.tag, t);
+	}
+	return Array.from(byTag.values());
+}
+
+/** 文本变更后在此时间窗口内视为“与编辑器交互”，才触发防抖高亮 */
+const EDITOR_INTERACTION_WINDOW_MS = 50;
 
 function getHighlightOptions(): HighlightOptions {
 	const cfg = vscode.workspace.getConfiguration('better-comments');
@@ -46,6 +62,12 @@ export async function activate(
 
 	/** 当前激活的编辑器 */
 	let activeEditor: vscode.TextEditor | undefined;
+	/** 当前是否应对 activeEditor 执行装饰更新（焦点、可见性、一致性校验） */
+	function shouldUpdateDecorations(): boolean {
+		if (!activeEditor || activeEditor !== vscode.window.activeTextEditor) return false;
+		return vscode.window.visibleTextEditors.includes(activeEditor);
+	}
+
 	/** 当前语言对应的高亮状态，切换编辑器时更新 */
 	let currentState: HighlightState | null = null;
 	/** 标签定义（含 decoration），激活时构建一次并注册 dispose */
@@ -87,23 +109,9 @@ export async function activate(
 						getHighlightOptions(),
 						log,
 					);
-					// 合并所有区域的标签定义，确保所有可能的标签都能被应用
-					const allTagDefs = new Map<string, TagDef>();
-					tagDefs.forEach((tagDef) => allTagDefs.set(tagDef.tag, tagDef));
-					// 为每个区域添加其语言特定的标签定义
-					for (const region of regions) {
-						const regionTagDefs = getTagDefs(log, region.languageId);
-						regionTagDefs.forEach((tagDef) =>
-							allTagDefs.set(tagDef.tag, tagDef),
-						);
-					}
-					log.debug(`[handleHybridLanguage] 应用装饰，共 ${Array.from(allTagDefs.values()).length} 个标签定义`);
-					applyDecorations(
-						editor,
-						Array.from(allTagDefs.values()),
-						rangesByTag,
-						log,
-					);
+					const allTagDefs = mergeTagDefsForRegions(tagDefs, regions, log);
+					log.debug(`[handleHybridLanguage] 应用装饰，共 ${allTagDefs.length} 个标签定义`);
+					applyDecorations(editor, allTagDefs, rangesByTag);
 					return true;
 				}
 			}
@@ -133,35 +141,13 @@ export async function activate(
 
 		log.debug(`[updateDecorations] 处理单语言文件：${getLanguageIdForDocument(activeEditor.document)}`);
 		const rangesByTag = collectHighlightRanges(activeEditor, currentState, log);
-		applyDecorations(activeEditor, tagDefs, rangesByTag, log);
+		applyDecorations(activeEditor, tagDefs, rangesByTag);
 		log.debug('[updateDecorations] ✅ 装饰更新完成');
 	}
 
 	/** 防抖：在 DEBOUNCE_MS 后执行 updateDecorations */
 	function triggerUpdateDecorations(): void {
-		// 只在当前激活编辑器是文本编辑器且有焦点时才更新
-		if (!activeEditor || !vscode.window.activeTextEditor) {
-			return;
-		}
-
-		// 检查是否是同一个编辑器（确保焦点在当前编辑区）
-		if (activeEditor !== vscode.window.activeTextEditor) {
-			return;
-		}
-
-		// 检查编辑器是否可见（不在后台或被其他视图覆盖）
-		const visibleEditors = vscode.window.visibleTextEditors;
-		if (!visibleEditors.includes(activeEditor)) {
-			return;
-		}
-
-		// 检查当前焦点是否在编辑器中（通过 selection 判断）
-		// 如果焦点在终端、输入框等其他地方，selections 会是空的或者不变化
-		const currentSelection = activeEditor.selection;
-		if (currentSelection.isEmpty && activeEditor.document.getText().length === 0) {
-			// 空文档且无选区，可能是焦点不在编辑器
-			// 但为了兼容性，我们还是允许更新
-		}
+		if (!shouldUpdateDecorations()) return;
 
 		if (decorationTimeout) clearTimeout(decorationTimeout);
 		decorationTimeout = setTimeout(async () => {
@@ -262,17 +248,8 @@ export async function activate(
 				return;
 			}
 
-			// 严格检查：焦点必须在编辑器中
-			if (!isEditorFocused) {
-				return;
-			}
-
-			// 检查是否在最近 50ms 内有编辑器交互（缩短时间窗口）
-			const now = Date.now();
-			if (now - lastEditorInteraction > 50) {
-				return;
-			}
-
+			if (!isEditorFocused) return;
+			if (Date.now() - lastEditorInteraction > EDITOR_INTERACTION_WINDOW_MS) return;
 			triggerUpdateDecorations();
 		}),
 		vscode.workspace.onDidSaveTextDocument((doc) => {

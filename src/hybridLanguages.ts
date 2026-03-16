@@ -126,7 +126,7 @@ const astroBlockRegions: BlockRegionDef[] = [
 		defaultLanguageId: 'css',
 		langAttributeMap: { scss: 'scss', less: 'less' },
 	},
-	{ tagName: 'markdown', defaultLanguageId: '``' },
+	{ tagName: 'markdown', defaultLanguageId: 'markdown' },
 ];
 
 export const astroHybridConfig = {
@@ -136,13 +136,16 @@ export const astroHybridConfig = {
 	extractRegions: extractBlockRegions,
 };
 
-/** 获取所有支持的混合语言配置 */
+let cachedHybridConfigs: Map<string, HybridLanguageConfig> | null = null;
+
+/** 获取所有支持的混合语言配置（惰性缓存，配置静态不变） */
 export function getHybridLanguageConfigs(): Map<string, HybridLanguageConfig> {
-	const configs = new Map<string, HybridLanguageConfig>();
-	configs.set('vue', vueHybridConfig);
-	configs.set('svelte', svelteHybridConfig);
-	configs.set('astro', astroHybridConfig);
-	return configs;
+	if (cachedHybridConfigs) return cachedHybridConfigs;
+	cachedHybridConfigs = new Map<string, HybridLanguageConfig>();
+	cachedHybridConfigs.set('vue', vueHybridConfig);
+	cachedHybridConfigs.set('svelte', svelteHybridConfig);
+	cachedHybridConfigs.set('astro', astroHybridConfig);
+	return cachedHybridConfigs;
 }
 
 /**

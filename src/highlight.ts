@@ -6,7 +6,12 @@
 
 import * as vscode from 'vscode';
 
-import { JSDOC_LANGUAGE_IDS, IGNORE_FIRST_LINE_LANGUAGE_IDS } from './config';
+import {
+	getCommentConfiguration,
+	JSDOC_LANGUAGE_IDS,
+	IGNORE_FIRST_LINE_LANGUAGE_IDS,
+} from './config';
+import { getTagDefs } from './tags';
 
 /**
  * 正则特殊字符转义
@@ -444,18 +449,15 @@ export function collectHighlightRanges(
  * @param editor 当前编辑器
  * @param tagDefs 标签定义（含 decoration）
  * @param rangesByTag 各标签对应的区间列表
- * @param log 日志输出对象
  * @remarks 未在 rangesByTag 中出现的标签会应用空数组，以清除旧装饰
  */
 export function applyDecorations(
 	editor: vscode.TextEditor,
 	tagDefs: TagDef[],
 	rangesByTag: RangesByTag,
-	log: Logger,
 ): void {
 	for (const tagDef of tagDefs) {
-		const ranges = rangesByTag.get(tagDef.tag) ?? [];
-		editor.setDecorations(tagDef.decoration, ranges);
+		editor.setDecorations(tagDef.decoration, rangesByTag.get(tagDef.tag) ?? []);
 	}
 }
 
@@ -471,12 +473,7 @@ export async function collectHighlightRangesForRegion(
 	options: HighlightOptions = {},
 	log: Logger,
 ): Promise<RangesByTag> {
-	const { getCommentConfiguration } = await import('./config');
-	const { getTagDefs } = await import('./tags');
-
-	// 获取该语言特定的标签定义
 	const regionTagDefs = getTagDefs(log, region.languageId);
-
 	const commentConfig = await getCommentConfiguration(region.languageId, log);
 
 	const state = buildHighlightState(

@@ -208,6 +208,8 @@ export const FILE_EXTENSION_TO_LANGUAGE_ID: Readonly<Record<string, string>> = {
 	'.trigger': 'apex',
 };
 
+const EXT_TO_LANG = FILE_EXTENSION_TO_LANGUAGE_ID as Record<string, string>;
+
 /**
  * 根据文档优先按文件后缀解析语言 ID，用于高亮判断
  * @param document 当前文档
@@ -215,22 +217,9 @@ export const FILE_EXTENSION_TO_LANGUAGE_ID: Readonly<Record<string, string>> = {
  */
 export function getLanguageIdForDocument(document: vscode.TextDocument): string {
 	const uri = document.uri;
-	if (uri.scheme !== 'file' && !uri.path) {
-		return document.languageId;
-	}
+	if (uri.scheme !== 'file' && !uri.path) return document.languageId;
 	const pathStr = uri.fsPath ?? uri.path;
-	const fileName = path.basename(pathStr);
-	// 无后缀文件名（如 Dockerfile、Makefile）
-	const byFileName = (FILE_EXTENSION_TO_LANGUAGE_ID as Record<string, string>)[fileName];
-	if (byFileName) {
-		return byFileName;
-	}
-	const ext = path.extname(pathStr);
-	const byExt = (FILE_EXTENSION_TO_LANGUAGE_ID as Record<string, string>)[ext];
-	if (byExt) {
-		return byExt;
-	}
-	return document.languageId;
+	return EXT_TO_LANG[path.basename(pathStr)] ?? EXT_TO_LANG[path.extname(pathStr)] ?? document.languageId;
 }
 
 /** 内置注释配置：扩展未提供或加载失败时使用；覆盖常见语言的行注释、块注释 */

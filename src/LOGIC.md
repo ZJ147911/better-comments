@@ -43,14 +43,14 @@
    - 再次尝试 handleHybridLanguage；若处理了则 return。
    - 若 **!currentState?.supported** 则直接 return。
    - **collectHighlightRanges(editor, currentState, log)** 得到 **rangesByTag**。
-   - **applyDecorations(editor, tagDefs, rangesByTag, log)** 把区间应用到编辑器的各 tag 的 decoration。
+   - **applyDecorations(editor, tagDefs, rangesByTag)** 把区间应用到编辑器的各 tag 的 decoration。
 
 ### 3.2 混合语言路径（Vue / Svelte 等单文件多语言）
 
 1. **handleHybridLanguage(editor)**：
    - 用 **isHybridLanguage(languageId)** 判断是否为混合语言；若是，取 **getHybridConfigForLanguage(languageId)**。
    - 用 **extractRegions(text, blockRegions)** 从全文提取 **DocumentRegion[]**（每段有 startOffset、endOffset、languageId）。
-   - 若 regions 非空：**collectHighlightRangesInRegions(editor, regions, tagDefs, getHighlightOptions(), log)** 得到合并后的 **rangesByTag**；再合并全局 tagDefs 与各区域的 **getTagDefs(log, region.languageId)**，**applyDecorations(editor, allTagDefs, rangesByTag, log)**。
+   - 若 regions 非空：**collectHighlightRangesInRegions(...)** 得到 **rangesByTag**；**mergeTagDefsForRegions(tagDefs, regions, log)** 得到 **allTagDefs**，**applyDecorations(editor, allTagDefs, rangesByTag)**。
 2. 混合路径下不维护 **currentState**；每次 updateDecorations 时若走混合路径，都会重新提取区域并按区域语言收集区间。
 
 ---
@@ -69,7 +69,7 @@
 | **onDidChangeTextEditorViewColumn** | 若事件属于 activeEditor，按当前可见编辑器列表更新 isEditorFocused。 |
 | **extensions.onDidChange** | 调用 updateLanguageDefinitions(log)；若有 activeEditor 则 updateForEditor(activeEditor)。 |
 
-**triggerUpdateDecorations()** 会做严格校验：必须有 activeEditor、且 activeEditor 就是当前 activeTextEditor、且该编辑器在 visibleTextEditors 中，再设 100ms 防抖定时器，到期执行 **updateDecorations()**。
+**triggerUpdateDecorations()** 通过 **shouldUpdateDecorations()** 校验（activeEditor 存在、为当前 activeTextEditor、在 visibleTextEditors 中），通过后设 100ms 防抖定时器，到期执行 **updateDecorations()**。
 
 ---
 
@@ -92,7 +92,7 @@
      - JSDoc：仅当 format.highlightJSDoc && format.highlightBlock 时，用 JSDOC_BLOCK_REGEX + getJSDocLineTagRegex，同样 processBlockContent → matchBlockContentLines。
    - 标签匹配：长标签优先（sortTagDefsByLengthDesc）、纯单词标签加 `\b`、不区分大小写（findTagByKey 用 toLowerCase）。
 
-5. **applyDecorations(editor, tagDefs, rangesByTag, log)**  
+5. **applyDecorations(editor, tagDefs, rangesByTag)**  
    对每个 tagDef，用 **editor.setDecorations(tagDef.decoration, rangesByTag.get(tagDef.tag) ?? [])**；未出现的 tag 传空数组以清除旧装饰。
 
 ---
@@ -130,9 +130,9 @@
   → getTagDefs(log) → tagDefs
   → updateForEditor(activeEditor)
        → handleHybridLanguage?
-           是 → extractRegions → collectHighlightRangesInRegions → applyDecorations(allTagDefs)
+           是 → extractRegions → collectHighlightRangesInRegions → mergeTagDefsForRegions → applyDecorations
            否 → getCommentConfiguration → buildHighlightState → currentState
-                 → triggerUpdateDecorations()
+                 → triggerUpdateDecorations() [shouldUpdateDecorations 校验]
                       → (防抖 100ms) → updateDecorations()
                            → handleHybridLanguage? 同上
                            → collectHighlightRanges(editor, currentState) → applyDecorations(tagDefs)

@@ -187,7 +187,8 @@ function buildTagDefs(items: TagItemSingle[], log?: Logger): TagDef[] {
 export function getTagDefs(log?: Logger, languageId?: string): TagDef[] {
 	const { items, fromDefault } = getTagItems(languageId);
 	const defs = buildTagDefs(items, log);
-	if (fromDefault && defs.length > 0)
+	if (fromDefault && defs.length > 0) {
 		log?.warn('未读取到 better-comments.tags 配置，已使用内置默认标签');
+	}
 	return defs;
 }

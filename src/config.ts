@@ -118,6 +118,12 @@ export const IGNORE_FIRST_LINE_LANGUAGE_IDS: ReadonlySet<string> = new Set([
 	'r',
 ]);
 
+/** 高亮匹配时跳过的非代码语言 ID（如 .txt、.log），不进行注释高亮 */
+export const SKIP_HIGHLIGHT_LANGUAGE_IDS: ReadonlySet<string> = new Set([
+	'plaintext', // .txt 等纯文本
+	'log',       // 日志文件
+]);
+
 /** 内置注释配置：扩展未提供或加载失败时使用；覆盖常见语言的行注释、块注释 */
 const BUILDIN_COMMENT_CONFIGS: Readonly<Record<string, CommentConfig>> = {
 	// 仅块注释

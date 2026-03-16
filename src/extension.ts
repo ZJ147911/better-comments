@@ -6,7 +6,7 @@
 
 import * as vscode from 'vscode';
 
-import { getCommentConfiguration, updateLanguageDefinitions } from './config';
+import { getCommentConfiguration, updateLanguageDefinitions, SKIP_HIGHLIGHT_LANGUAGE_IDS } from './config';
 import {
 	buildHighlightState,
 	collectHighlightRanges,
@@ -172,12 +172,25 @@ export async function activate(
 
 		activeEditor = editor;
 
+		// 忽略 txt、log 等非代码文件，不进行高亮匹配
+		const languageId = editor.document.languageId;
+		if (SKIP_HIGHLIGHT_LANGUAGE_IDS.has(languageId)) {
+			log.debug(`[updateForEditor] 跳过非代码语言：${languageId}`);
+			currentState = buildHighlightState(
+				undefined,
+				languageId,
+				tagDefs,
+				getHighlightOptions(),
+			);
+			triggerUpdateDecorations();
+			return;
+		}
+
 		// 尝试处理混合语言文件
 		const handled = await handleHybridLanguage(editor);
 		if (handled) return;
 
 		// 使用原有的单语言处理逻辑
-		const languageId = editor.document.languageId;
 		const commentConfig = await getCommentConfiguration(languageId, log);
 		currentState = buildHighlightState(
 			commentConfig,

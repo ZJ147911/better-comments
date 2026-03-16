@@ -182,11 +182,13 @@ export async function activate(
 		const languageId = getLanguageIdForDocument(editor.document);
 		if (SKIP_HIGHLIGHT_LANGUAGE_IDS.has(languageId)) {
 			log.debug(`[updateForEditor] 跳过非代码语言：${languageId}`);
+			// 跳过语言强制 supported=false，不受 highlightPlainText 影响
+			const skipOptions = { ...getHighlightOptions(), highlightPlainText: false };
 			currentState = buildHighlightState(
 				undefined,
 				languageId,
 				tagDefs,
-				getHighlightOptions(),
+				skipOptions,
 			);
 			triggerUpdateDecorations();
 			return;

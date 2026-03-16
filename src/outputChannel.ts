@@ -8,17 +8,18 @@ import * as vscode from 'vscode';
 
 const CHANNEL_NAME = 'Better Comments';
 
-/** 级别对应的数值，用于比较最低级别 */
-const LEVEL_ORDER: Record<LogLevel, number> = {
-	debug: 0,
-	info: 1,
-	warn: 2,
-	error: 3,
-};
+/** 日志级别从低到高的有序列表，用于比较 minLevel */
+const LEVELS: LogLevel[] = ['debug', 'info', 'warn', 'error'];
 
 let logChannel: vscode.LogOutputChannel | undefined;
+/** 是否已在本次会话中显示过输出通道（首次写日志时自动展示） */
+let channelShown = false;
 /** 配置缓存，避免频繁读取 */
 let cachedConfig: { minLevel: LogLevel; filterKeyword: string } | null = null;
+
+function isLevelEnabled(level: LogLevel, minLevel: LogLevel): boolean {
+	return LEVELS.indexOf(level) >= LEVELS.indexOf(minLevel);
+}
 
 /** 从 VS Code 配置读取输出筛选（完整键名 better-comments.output.*） */
 function getOutputConfig(): { minLevel: LogLevel; filterKeyword: string } {
@@ -26,29 +27,55 @@ function getOutputConfig(): { minLevel: LogLevel; filterKeyword: string } {
 		return cachedConfig;
 	}
 	const cfg = vscode.workspace.getConfiguration('better-comments');
-	const level = cfg.get<string>('output.minLevel', 'debug');
-	const keyword = (cfg.get<string>('output.filterKeyword') ?? '').trim();
+	const rawLevel = cfg.get<string>('output.minLevel', 'debug');
+	const level = LEVELS.includes(rawLevel as LogLevel)
+		? (rawLevel as LogLevel)
+		: 'debug';
+	const keyword = (cfg.get<string>('output.filterKeyword') ?? '')
+		.trim()
+		.toLowerCase();
 	cachedConfig = {
-		minLevel:
-			LEVEL_ORDER[level as LogLevel] !== undefined
-				? (level as LogLevel)
-				: 'debug',
+		minLevel: level,
 		filterKeyword: keyword,
 	};
 	return cachedConfig;
 }
 
-/** 按级别与关键词筛选后写入 OutputChannel */
+/** 按级别与关键词筛选后写入 OutputChannel，并应用 minLevel */
 function write(level: LogLevel, message: string): void {
-	// 只保留关键词过滤
-	const { filterKeyword: kw } = getOutputConfig();
-	if (kw && !message.toLowerCase().includes(kw.toLowerCase())) {
-		return;
+	if (!logChannel) return;
+
+	const { minLevel, filterKeyword: kw } = getOutputConfig();
+	// 级别过滤：低于配置的最低级别不输出
+	if (!isLevelEnabled(level, minLevel)) return;
+	if (kw) {
+		const lower = message.toLowerCase();
+		if (!lower.includes(kw)) return;
 	}
 
-	// 为不同级别添加前缀，确保 debug 日志能够被打印
-	const prefix = `[${level.toUpperCase()}]`;
-	logChannel?.appendLine(`${prefix} ${message}`);
+	// 首次 error 时展示输出面板中的 Better Comments 通道，便于用户注意到错误
+	if (level === 'error' && !channelShown) {
+		channelShown = true;
+		logChannel.show(true);
+	}
+
+	// 使用 LogOutputChannel 的按级方法，便于在「输出」与「Log (Extension Host)」中正确显示
+	switch (level) {
+		case 'debug':
+			logChannel.debug(message);
+			break;
+		case 'info':
+			logChannel.info(message);
+			break;
+		case 'warn':
+			logChannel.warn(message);
+			break;
+		case 'error':
+			logChannel.error(message);
+			break;
+		default:
+			logChannel.info(message);
+	}
 }
 
 /**
@@ -67,6 +94,16 @@ export function createOutputChannel(
 } {
 	logChannel = vscode.window.createOutputChannel(CHANNEL_NAME, { log: true });
 	context.subscriptions.push(logChannel);
+
+	// 配置变更时清除缓存，使 minLevel / filterKeyword 立即生效
+	context.subscriptions.push(
+		vscode.workspace.onDidChangeConfiguration((e) => {
+			if (e.affectsConfiguration('better-comments.output')) {
+				cachedConfig = null;
+			}
+		}),
+	);
+
 	return {
 		debug(msg) {
 			write('debug', msg);
@@ -81,7 +118,9 @@ export function createOutputChannel(
 			write('error', msg);
 		},
 		appendLine(text: string) {
-			logChannel?.appendLine(text);
+			if (logChannel) {
+				logChannel.appendLine(text);
+			}
 		},
 	};
 }

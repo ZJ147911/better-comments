@@ -243,19 +243,22 @@ export async function activate(
 
 			// 严格检查：焦点必须在编辑器中
 			if (!isEditorFocused) {
-				// log.debug('[onDidChangeTextDocument] ⚠️ 焦点不在编辑器，忽略文档变化');
 				return;
 			}
 
 			// 检查是否在最近 50ms 内有编辑器交互（缩短时间窗口）
 			const now = Date.now();
 			if (now - lastEditorInteraction > 50) {
-				// 可能是外部工具修改了文档，不是用户直接输入
-				// log.debug('[onDidChangeTextDocument] ⚠️ 忽略非用户直接输入的文档变化');
 				return;
 			}
 
 			triggerUpdateDecorations();
+		}),
+		vscode.workspace.onDidSaveTextDocument((doc) => {
+			// 保存的文档是当前激活编辑器时，重新触发高亮
+			if (activeEditor && activeEditor.document === doc) {
+				triggerUpdateDecorations();
+			}
 		}),
 	);
 }

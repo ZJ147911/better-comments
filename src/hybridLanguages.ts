@@ -8,16 +8,18 @@
  * 通用的块级区域提取函数（支持 Vue、Svelte 等）
  * @param text 文档完整文本
  * @param blockDefs 块区域定义列表
+ * @param log 可选日志
  * @returns 区域列表，按在文档中的位置排序
  */
 export function extractBlockRegions(
 	text: string,
 	blockDefs: BlockRegionDef[],
+	log?: Logger,
 ): DocumentRegion[] {
 	const regions: DocumentRegion[] = [];
 	const tagNames = blockDefs.map((def) => def.tagName).join('|');
-	
-	// 构建正则表达式
+	log?.debug(`[extractBlockRegions] 匹配标签: ${tagNames}`);
+
 	const pattern = `<(${tagNames})([^>]*)>([\\s\\S]*?)<\\/\\1>|<(${tagNames})([^>]*)\\s*\\/>`;
 	const blockRegex = new RegExp(pattern, 'gi');
 
@@ -60,7 +62,9 @@ export function extractBlockRegions(
 		});
 	}
 
-	return regions.sort((a, b) => a.startOffset - b.startOffset);
+	const sorted = regions.sort((a, b) => a.startOffset - b.startOffset);
+	log?.debug(`[extractBlockRegions] 提取到 ${sorted.length} 个区域`);
+	return sorted;
 }
 
 /** Vue 文件的块区域定义 */

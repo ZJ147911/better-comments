@@ -1,7 +1,7 @@
 {
   "name": "better-comments",
   "displayName": "Better Comments",
-  "version": "3.0.3",
+  "version": "3.0.4",
   "description": "通过告警、说明、TODO 等标签增强代码注释高亮与可读性",
   "categories": [
     "Formatters"

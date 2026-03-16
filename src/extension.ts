@@ -37,7 +37,9 @@ function mergeTagDefsForRegions(
 	for (const region of regions) {
 		for (const t of getTagDefs(log, region.languageId)) byTag.set(t.tag, t);
 	}
-	return Array.from(byTag.values());
+	const merged = Array.from(byTag.values());
+	log.debug(`[mergeTagDefsForRegions] ${regions.length} 个区域 → 合并后 ${merged.length} 个 TagDef`);
+	return merged;
 }
 
 /** 文本变更后在此时间窗口内视为“与编辑器交互”，才触发防抖高亮 */
@@ -82,12 +84,10 @@ export async function activate(
 	async function handleHybridLanguage(
 		editor: vscode.TextEditor,
 	): Promise<boolean> {
-		// 高亮判断时优先按文件后缀解析语言
-		const languageId = getLanguageIdForDocument(editor.document);
+		const languageId = getLanguageIdForDocument(editor.document, log);
 
-		// 检查是否为混合语言文件
 		if (isHybridLanguage(languageId)) {
-			log.debug(`检测到混合语言：${languageId}，启用区域分析`);
+			log.debug(`[handleHybridLanguage] 检测到混合语言：${languageId}，启用区域分析`);
 			const hybridConfig = getHybridConfigForLanguage(languageId)!;
 
 			if (hybridConfig.enabled) {
@@ -95,6 +95,7 @@ export async function activate(
 				const regions = hybridConfig.extractRegions(
 					text,
 					hybridConfig.blockRegions,
+					log,
 				);
 				log.debug(`[handleHybridLanguage] ✅ 提取到 ${regions.length} 个区域`);
 				regions.forEach((region, index) => {
@@ -111,7 +112,7 @@ export async function activate(
 					);
 					const allTagDefs = mergeTagDefsForRegions(tagDefs, regions, log);
 					log.debug(`[handleHybridLanguage] 应用装饰，共 ${allTagDefs.length} 个标签定义`);
-					applyDecorations(editor, allTagDefs, rangesByTag);
+					applyDecorations(editor, allTagDefs, rangesByTag, log);
 					return true;
 				}
 			}
@@ -139,16 +140,19 @@ export async function activate(
 			return;
 		}
 
-		log.debug(`[updateDecorations] 处理单语言文件：${getLanguageIdForDocument(activeEditor.document)}`);
+		const langId = getLanguageIdForDocument(activeEditor.document, log);
+		log.debug(`[updateDecorations] 处理单语言文件：${langId}`);
 		const rangesByTag = collectHighlightRanges(activeEditor, currentState, log);
-		applyDecorations(activeEditor, tagDefs, rangesByTag);
+		applyDecorations(activeEditor, tagDefs, rangesByTag, log);
 		log.debug('[updateDecorations] ✅ 装饰更新完成');
 	}
 
 	/** 防抖：在 DEBOUNCE_MS 后执行 updateDecorations */
 	function triggerUpdateDecorations(): void {
-		if (!shouldUpdateDecorations()) return;
-
+		if (!shouldUpdateDecorations()) {
+			log.debug('[triggerUpdateDecorations] 跳过：编辑器未激活或不可见');
+			return;
+		}
 		if (decorationTimeout) clearTimeout(decorationTimeout);
 		decorationTimeout = setTimeout(async () => {
 			decorationTimeout = undefined;
@@ -164,8 +168,7 @@ export async function activate(
 
 		activeEditor = editor;
 
-		// 高亮判断时优先按文件后缀解析语言，再判断是否跳过
-		const languageId = getLanguageIdForDocument(editor.document);
+		const languageId = getLanguageIdForDocument(editor.document, log);
 		if (SKIP_HIGHLIGHT_LANGUAGE_IDS.has(languageId)) {
 			log.debug(`[updateForEditor] 跳过非代码语言：${languageId}`);
 			// 跳过语言强制 supported=false，不受 highlightPlainText 影响
@@ -175,6 +178,7 @@ export async function activate(
 				languageId,
 				tagDefs,
 				skipOptions,
+				log,
 			);
 			triggerUpdateDecorations();
 			return;
@@ -184,17 +188,15 @@ export async function activate(
 		const handled = await handleHybridLanguage(editor);
 		if (handled) return;
 
-		// 使用原有的单语言处理逻辑
 		const commentConfig = await getCommentConfiguration(languageId, log);
 		currentState = buildHighlightState(
 			commentConfig,
 			languageId,
 			tagDefs,
 			getHighlightOptions(),
+			log,
 		);
-		log.debug(
-			`语言: ${languageId}，支持: ${currentState.supported ? '是' : '否'}`,
-		);
+		log.debug(`[updateForEditor] 语言: ${languageId}，支持: ${currentState.supported ? '是' : '否'}`);
 		triggerUpdateDecorations();
 	}
 
@@ -216,12 +218,13 @@ export async function activate(
 			if (activeEditor) updateForEditor(activeEditor);
 		}),
 		vscode.window.onDidChangeActiveTextEditor((editor) => {
-			// 当激活编辑器变化时，更新焦点状态
 			isEditorFocused = !!editor;
+			log.debug(`[onDidChangeActiveTextEditor] 激活编辑器变更 ${editor ? editor.document.fileName : '无'}`);
 			updateForEditor(editor);
 		}),
 		vscode.workspace.onDidOpenTextDocument((doc) => {
 			if (vscode.window.activeTextEditor?.document === doc) {
+				log.debug(`[onDidOpenTextDocument] 打开文档 ${doc.fileName ?? doc.uri.toString()}`);
 				updateForEditor(vscode.window.activeTextEditor);
 			}
 		}),
@@ -244,17 +247,15 @@ export async function activate(
 			}
 		}),
 		vscode.workspace.onDidChangeTextDocument((event) => {
-			if (!activeEditor || event.document !== activeEditor.document) {
-				return;
-			}
-
+			if (!activeEditor || event.document !== activeEditor.document) return;
 			if (!isEditorFocused) return;
 			if (Date.now() - lastEditorInteraction > EDITOR_INTERACTION_WINDOW_MS) return;
+			log.debug('[onDidChangeTextDocument] 文档变更，触发防抖高亮');
 			triggerUpdateDecorations();
 		}),
 		vscode.workspace.onDidSaveTextDocument((doc) => {
-			// 保存的文档是当前激活编辑器时，重新触发高亮
 			if (activeEditor && activeEditor.document === doc) {
+				log.debug(`[onDidSaveTextDocument] 保存 ${doc.fileName ?? doc.uri.toString()}，触发高亮`);
 				triggerUpdateDecorations();
 			}
 		}),

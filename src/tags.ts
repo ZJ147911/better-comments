@@ -117,16 +117,15 @@ function decorationOptionsFromItem(
 /**
  * 从当前工作区配置读取 better-comments.tags，无效或空时返回默认标签项
  * @param languageId 可选的语言ID，用于读取语言特定的标签配置
+ * @param log 可选日志
  * @returns 导出配置为 TagItemSingle[]（tag 均为单字符串）及是否来自默认配置
- * @remarks 不写日志，仅做读取与兜底
  */
-export function getTagItems(languageId?: string): {
-	items: TagItemSingle[];
-	fromDefault: boolean;
-} {
+export function getTagItems(
+	languageId?: string,
+	log?: Logger,
+): { items: TagItemSingle[]; fromDefault: boolean } {
 	const cfg = vscode.workspace.getConfiguration('better-comments');
 
-	// 优先读取语言特定的标签配置
 	if (languageId) {
 		const languageSpecificTags = cfg.get<Record<string, TagItem[]>>(
 			'languageSpecificTags',
@@ -134,16 +133,18 @@ export function getTagItems(languageId?: string): {
 		if (languageSpecificTags && languageSpecificTags[languageId]) {
 			const raw = languageSpecificTags[languageId];
 			if (Array.isArray(raw) && raw.length > 0) {
+				log?.debug(`[getTagItems] 使用语言专属标签 languageId=${languageId} 共 ${raw.length} 项`);
 				return { items: expandToSingleTagItems(raw), fromDefault: false };
 			}
 		}
 	}
 
-	// 回退到全局标签配置
 	const raw = cfg.get<TagItem[]>('tags');
 	if (Array.isArray(raw) && raw.length > 0) {
+		log?.debug(`[getTagItems] 使用全局标签 共 ${raw.length} 项`);
 		return { items: expandToSingleTagItems(raw), fromDefault: false };
 	}
+	log?.debug('[getTagItems] 使用内置默认标签');
 	return { items: DEFAULT_TAG_ITEMS, fromDefault: true };
 }
 
@@ -185,10 +186,11 @@ function buildTagDefs(items: TagItemSingle[], log?: Logger): TagDef[] {
  * @returns 当前 better-comments.tags 对应的 TagDef 数组
  */
 export function getTagDefs(log?: Logger, languageId?: string): TagDef[] {
-	const { items, fromDefault } = getTagItems(languageId);
+	const { items, fromDefault } = getTagItems(languageId, log);
 	const defs = buildTagDefs(items, log);
 	if (fromDefault && defs.length > 0) {
 		log?.warn('未读取到 better-comments.tags 配置，已使用内置默认标签');
 	}
+	log?.debug(`[getTagDefs] languageId=${languageId ?? 'global'} → ${defs.length} 个 TagDef`);
 	return defs;
 }

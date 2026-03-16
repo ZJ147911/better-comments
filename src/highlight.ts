@@ -130,6 +130,7 @@ function buildSingleLineRegex(
  * @param languageCode 语言短标识
  * @param tagDefs 标签定义列表
  * @param options 多行/纯文本开关
+ * @param log 可选日志
  * @returns 高亮状态，supported 为 false 时调用方可不执行查找
  * @remarks plaintext 时 supported 由 options.highlightPlainText 决定
  */
@@ -138,6 +139,7 @@ export function buildHighlightState(
 	languageCode: string,
 	tagDefs: TagDef[],
 	options: HighlightOptions = {},
+	log?: Logger,
 ): HighlightState {
 	const format = resolveCommentFormat(commentConfig, languageCode, options);
 
@@ -152,6 +154,9 @@ export function buildHighlightState(
 		format.isPlainText && !!options.highlightPlainText,
 	);
 
+	log?.debug(
+		`[buildHighlightState] ${languageCode} supported=${supported} singleLine=${!!singleLineRegex} block=${format.highlightBlock} jsdoc=${format.highlightJSDoc}`,
+	);
 	return {
 		supported,
 		format,
@@ -439,8 +444,11 @@ export function collectHighlightRanges(
 	state: HighlightState,
 	log: Logger,
 ): RangesByTag {
+	log.debug('[collectHighlightRanges] 开始收集高亮区间');
 	const rangesByTag: RangesByTag = new Map();
 	findAllRanges(editor, state, rangesByTag, log);
+	const total = Array.from(rangesByTag.values()).reduce((s, arr) => s + arr.length, 0);
+	log.debug(`[collectHighlightRanges] 共收集 ${total} 个区间，${rangesByTag.size} 个标签`);
 	return rangesByTag;
 }
 
@@ -449,16 +457,22 @@ export function collectHighlightRanges(
  * @param editor 当前编辑器
  * @param tagDefs 标签定义（含 decoration）
  * @param rangesByTag 各标签对应的区间列表
+ * @param log 可选日志
  * @remarks 未在 rangesByTag 中出现的标签会应用空数组，以清除旧装饰
  */
 export function applyDecorations(
 	editor: vscode.TextEditor,
 	tagDefs: TagDef[],
 	rangesByTag: RangesByTag,
+	log?: Logger,
 ): void {
+	let totalRanges = 0;
 	for (const tagDef of tagDefs) {
-		editor.setDecorations(tagDef.decoration, rangesByTag.get(tagDef.tag) ?? []);
+		const ranges = rangesByTag.get(tagDef.tag) ?? [];
+		totalRanges += ranges.length;
+		editor.setDecorations(tagDef.decoration, ranges);
 	}
+	log?.debug(`[applyDecorations] 已应用 ${tagDefs.length} 个标签，共 ${totalRanges} 个区间`);
 }
 
 // 混合语言文件支持（区域级别高亮）
@@ -473,6 +487,7 @@ export async function collectHighlightRangesForRegion(
 	options: HighlightOptions = {},
 	log: Logger,
 ): Promise<RangesByTag> {
+	log.debug(`[collectHighlightRangesForRegion] 区域 languageId=${region.languageId} offset=${region.startOffset}-${region.endOffset}`);
 	const regionTagDefs = getTagDefs(log, region.languageId);
 	const commentConfig = await getCommentConfiguration(region.languageId, log);
 
@@ -481,17 +496,18 @@ export async function collectHighlightRangesForRegion(
 		region.languageId,
 		regionTagDefs,
 		options,
+		log,
 	);
 
 	if (!state.supported) {
+		log.debug(`[collectHighlightRangesForRegion] 区域 ${region.languageId} 不支持，跳过`);
 		return new Map();
 	}
 
 	const rangesByTag: RangesByTag = new Map();
-
-	// 使用 findAllRanges 函数处理该区域的注释
 	findAllRanges(editor, state, rangesByTag, log, region);
-
+	const total = Array.from(rangesByTag.values()).reduce((s, arr) => s + arr.length, 0);
+	log.debug(`[collectHighlightRangesForRegion] 区域 ${region.languageId} 收集到 ${total} 个区间`);
 	return rangesByTag;
 }
 
@@ -505,6 +521,7 @@ export async function collectHighlightRangesInRegions(
 	options: HighlightOptions = {},
 	log: Logger,
 ): Promise<RangesByTag> {
+	log.debug(`[collectHighlightRangesInRegions] 开始处理 ${regions.length} 个区域`);
 	const allRangesByTag: RangesByTag = new Map();
 
 	for (const region of regions) {
@@ -515,14 +532,14 @@ export async function collectHighlightRangesInRegions(
 			options,
 			log,
 		);
-
-		// 合并结果
 		for (const [tag, ranges] of regionRanges) {
 			const existing = allRangesByTag.get(tag) ?? [];
 			allRangesByTag.set(tag, existing.concat(ranges));
 		}
 	}
 
+	const total = Array.from(allRangesByTag.values()).reduce((s, arr) => s + arr.length, 0);
+	log.debug(`[collectHighlightRangesInRegions] 合并后共 ${total} 个区间`);
 	return allRangesByTag;
 }
 

@@ -213,13 +213,23 @@ const EXT_TO_LANG = FILE_EXTENSION_TO_LANGUAGE_ID as Record<string, string>;
 /**
  * 根据文档优先按文件后缀解析语言 ID，用于高亮判断
  * @param document 当前文档
+ * @param log 可选日志，用于输出解析结果
  * @returns 若后缀在 FILE_EXTENSION_TO_LANGUAGE_ID 中则返回对应 languageId，否则返回 document.languageId
  */
-export function getLanguageIdForDocument(document: vscode.TextDocument): string {
+export function getLanguageIdForDocument(
+	document: vscode.TextDocument,
+	log?: Logger,
+): string {
 	const uri = document.uri;
 	if (uri.scheme !== 'file' && !uri.path) return document.languageId;
 	const pathStr = uri.fsPath ?? uri.path;
-	return EXT_TO_LANG[path.basename(pathStr)] ?? EXT_TO_LANG[path.extname(pathStr)] ?? document.languageId;
+	const byFile = EXT_TO_LANG[path.basename(pathStr)];
+	const byExt = EXT_TO_LANG[path.extname(pathStr)];
+	const resolved = byFile ?? byExt ?? document.languageId;
+	if (log && (byFile ?? byExt)) {
+		log.debug(`[getLanguageIdForDocument] ${path.basename(pathStr)} → ${resolved}${byFile ? ' (文件名)' : ' (后缀)'}`);
+	}
+	return resolved;
 }
 
 /** 内置注释配置：扩展未提供或加载失败时使用；覆盖常见语言的行注释、块注释 */
@@ -276,6 +286,7 @@ const BUILDIN_COMMENT_CONFIGS: Readonly<Record<string, CommentConfig>> = {
  * @remarks 会清空 commentConfigCache，扩展列表变化时调用
  */
 export function updateLanguageDefinitions(log: Logger): void {
+	log.debug('[updateLanguageDefinitions] 清空注释配置缓存，重新扫描扩展');
 	commentConfigCache.clear();
 	interface LangContribution {
 		id: string;

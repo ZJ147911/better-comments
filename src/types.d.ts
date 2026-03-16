@@ -167,9 +167,10 @@ interface HybridLanguageConfig {
 	enabled: boolean;
 	/** 块区域定义 */
 	blockRegions: BlockRegionDef[];
-	/** 区域提取函数 */
+	/** 区域提取函数（可选传入 log 以输出调试日志） */
 	extractRegions: (
 		text: string,
 		blockDefs: BlockRegionDef[],
+		log?: Logger,
 	) => DocumentRegion[];
 }

@@ -1,7 +1,7 @@
 {
   "name": "better-comments",
   "displayName": "Better Comments",
-  "version": "3.0.2",
+  "version": "3.0.3",
   "description": "通过告警、说明、TODO 等标签增强代码注释高亮与可读性",
   "categories": [
     "Formatters"
@@ -32,7 +32,10 @@
     "watch-web": "rspack build --watch --config ./build/web-extension.rspack.config.js",
     "package-web": "rspack build --mode production --devtool hidden-source-map --config ./build/web-extension.rspack.config.js",
     "package:vsix": "npm run vscode:prepublish && vsce package --no-dependencies",
-    "fmt": "oxfmt"
+    "fmt": "oxfmt",
+    "version:patch": "npm version patch --no-git-tag-version",
+    "version:minor": "npm version minor --no-git-tag-version",
+    "version:major": "npm version major --no-git-tag-version"
   },
   "devDependencies": {
     "@rspack/cli": "^1.0.0",

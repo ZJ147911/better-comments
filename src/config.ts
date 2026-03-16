@@ -124,6 +124,115 @@ export const SKIP_HIGHLIGHT_LANGUAGE_IDS: ReadonlySet<string> = new Set([
 	'log',       // 日志文件
 ]);
 
+/**
+ * 文件后缀名到语言 ID 的映射（用于高亮时优先按后缀判断语言）
+ * 覆盖所有内置注释配置及需跳过的语言，与 BUILDIN_COMMENT_CONFIGS / SKIP_HIGHLIGHT_LANGUAGE_IDS 一致
+ */
+export const FILE_EXTENSION_TO_LANGUAGE_ID: Readonly<Record<string, string>> = {
+	// 跳过高亮的纯文本/日志
+	'.txt': 'plaintext',
+	'.text': 'plaintext',
+	'.log': 'log',
+
+	// 仅块注释
+	'.html': 'html',
+	'.htm': 'html',
+	'.xml': 'xml',
+	'.css': 'css',
+
+	// C 风格
+	'.c': 'c',
+	'.h': 'c',
+	'.cpp': 'cpp',
+	'.cc': 'cpp',
+	'.cxx': 'cpp',
+	'.hpp': 'cpp',
+	'.h++': 'cpp',
+	'.cs': 'csharp',
+	'.go': 'go',
+	'.java': 'java',
+	'.js': 'javascript',
+	'.mjs': 'javascript',
+	'.cjs': 'javascript',
+	'.ts': 'typescript',
+	'.mts': 'typescript',
+	'.cts': 'typescript',
+	'.jsx': 'javascriptreact',
+	'.tsx': 'typescriptreact',
+	'.jsonc': 'jsonc',
+	'.kt': 'kotlin',
+	'.kts': 'kotlin',
+	'.less': 'less',
+	'.scss': 'scss',
+	'.rs': 'rust',
+	'.swift': 'swift',
+	'.dart': 'dart',
+	'.scala': 'scala',
+	'.sbt': 'scala',
+
+	// 多行注释符
+	'.php': 'php',
+	'.sql': 'sql',
+	'.lua': 'lua',
+
+	// 仅行注释
+	'.py': 'python',
+	'.pyw': 'python',
+	'.pyi': 'python',
+	'.rb': 'ruby',
+	'.sh': 'shellscript',
+	'.bash': 'shellscript',
+	'.zsh': 'shellscript',
+	'.pl': 'perl',
+	'.pm': 'perl',
+	'.r': 'r',
+	'.R': 'r',
+	'.ex': 'elixir',
+	'.exs': 'elixir',
+	'.yaml': 'yaml',
+	'.yml': 'yaml',
+	'.graphql': 'graphql',
+	'.gql': 'graphql',
+	'.properties': 'properties',
+	'.ini': 'ini',
+	'.cfg': 'ini',
+
+	// 混合/模板
+	'.vue': 'vue',
+	'.svelte': 'svelte',
+
+	// 其他常见
+	'Dockerfile': 'dockerfile',
+	'Makefile': 'makefile',
+	'.cls': 'apex',
+	'.trigger': 'apex',
+};
+
+/**
+ * 根据文档优先按文件后缀解析语言 ID，用于高亮判断
+ * @param document 当前文档
+ * @returns 若后缀在 FILE_EXTENSION_TO_LANGUAGE_ID 中则返回对应 languageId，否则返回 document.languageId
+ */
+export function getLanguageIdForDocument(document: vscode.TextDocument): string {
+	const uri = document.uri;
+	if (uri.scheme !== 'file' && !uri.path) {
+		return document.languageId;
+	}
+	const pathStr = uri.fsPath ?? uri.path;
+	const fileName = path.basename(pathStr);
+	// 无后缀文件名（如 Dockerfile、Makefile）
+	const byFileName = (FILE_EXTENSION_TO_LANGUAGE_ID as Record<string, string>)[fileName];
+	if (byFileName) {
+		return byFileName;
+	}
+	const ext = path.extname(pathStr);
+	const byExt = (FILE_EXTENSION_TO_LANGUAGE_ID as Record<string, string>)[ext];
+	if (byExt) {
+		return byExt;
+	}
+	return document.languageId;
+}
+
 /** 内置注释配置：扩展未提供或加载失败时使用；覆盖常见语言的行注释、块注释 */
 const BUILDIN_COMMENT_CONFIGS: Readonly<Record<string, CommentConfig>> = {
 	// 仅块注释

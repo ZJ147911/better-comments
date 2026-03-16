@@ -6,7 +6,12 @@
 
 import * as vscode from 'vscode';
 
-import { getCommentConfiguration, updateLanguageDefinitions, SKIP_HIGHLIGHT_LANGUAGE_IDS } from './config';
+import {
+	getCommentConfiguration,
+	updateLanguageDefinitions,
+	SKIP_HIGHLIGHT_LANGUAGE_IDS,
+	getLanguageIdForDocument,
+} from './config';
 import {
 	buildHighlightState,
 	collectHighlightRanges,
@@ -55,7 +60,8 @@ export async function activate(
 	async function handleHybridLanguage(
 		editor: vscode.TextEditor,
 	): Promise<boolean> {
-		const languageId = editor.document.languageId;
+		// 高亮判断时优先按文件后缀解析语言
+		const languageId = getLanguageIdForDocument(editor.document);
 
 		// 检查是否为混合语言文件
 		if (isHybridLanguage(languageId)) {
@@ -125,7 +131,7 @@ export async function activate(
 			return;
 		}
 
-		log.debug(`[updateDecorations] 处理单语言文件：${activeEditor.document.languageId}`);
+		log.debug(`[updateDecorations] 处理单语言文件：${getLanguageIdForDocument(activeEditor.document)}`);
 		const rangesByTag = collectHighlightRanges(activeEditor, currentState, log);
 		applyDecorations(activeEditor, tagDefs, rangesByTag, log);
 		log.debug('[updateDecorations] ✅ 装饰更新完成');
@@ -172,8 +178,8 @@ export async function activate(
 
 		activeEditor = editor;
 
-		// 忽略 txt、log 等非代码文件，不进行高亮匹配
-		const languageId = editor.document.languageId;
+		// 高亮判断时优先按文件后缀解析语言，再判断是否跳过
+		const languageId = getLanguageIdForDocument(editor.document);
 		if (SKIP_HIGHLIGHT_LANGUAGE_IDS.has(languageId)) {
 			log.debug(`[updateForEditor] 跳过非代码语言：${languageId}`);
 			currentState = buildHighlightState(
